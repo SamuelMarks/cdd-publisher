@@ -109,7 +109,10 @@ impl EventQueue for redis::aio::MultiplexedConnection {
         };
 
         let payload_bytes: Vec<u8> =
-            redis::FromRedisValue::from_redis_value(payload_value.clone()).unwrap_or_default();
+            match redis::FromRedisValue::from_redis_value(payload_value.clone()) {
+                Ok(v) => v,
+                Err(_) => Vec::new(),
+            };
 
         Ok(Some((id.id.clone(), payload_bytes)))
     }

@@ -10,18 +10,21 @@ use error::Result;
 use worker::Worker;
 
 /// Main function for the `cdd-publisher` application.
+#[cfg(not(tarpaulin_include))]
 #[tokio::main]
-#[cfg(not(tarpaulin_include))]
-#[cfg(not(tarpaulin_include))]
-#[cfg(not(tarpaulin_include))]
 async fn main() -> Result<()> {
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+    let redis_url = match std::env::var("REDIS_URL") {
+        Ok(v) => v,
+        Err(_) => "redis://127.0.0.1/".to_string(),
+    };
     let stream_name = "publisher_jobs";
     let group_name = "publisher_group";
     let consumer_name = "worker_1";
 
-    let control_plane_url =
-        std::env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    let control_plane_url = match std::env::var("CONTROL_PLANE_URL") {
+        Ok(v) => v,
+        Err(_) => "http://127.0.0.1:8080".to_string(),
+    };
 
     let tokens = worker::RegistryTokens {
         npm: std::env::var("NPM_TOKEN").ok(),

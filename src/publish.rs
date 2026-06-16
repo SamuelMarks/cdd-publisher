@@ -35,7 +35,6 @@ pub fn publish_npm_with_exe(dir: &Path, token: &str, exe: &str) -> Result<()> {
         .current_dir(dir)
         .output()?;
 
-    #[cfg(not(tarpaulin_include))]
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let safe_stderr = stderr.replace(token, "***");
@@ -73,7 +72,6 @@ pub fn publish_pypi_with_exe(dir: &Path, token: &str, exe: &str) -> Result<()> {
         .current_dir(dir)
         .output()?;
 
-    #[cfg(not(tarpaulin_include))]
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let safe_stderr = stderr.replace(token, "***");
@@ -107,7 +105,6 @@ pub fn publish_cargo_with_exe(dir: &Path, token: &str, exe: &str) -> Result<()> 
         .current_dir(dir)
         .output()?;
 
-    #[cfg(not(tarpaulin_include))]
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let safe_stderr = stderr.replace(token, "***");

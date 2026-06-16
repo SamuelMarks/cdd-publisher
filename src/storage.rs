@@ -18,13 +18,11 @@ pub async fn fetch_and_unpack(client: &Client, url: &str, dest_dir: &Path) -> Re
     let is_tar_gz = url.ends_with(".tar.gz") || url.ends_with(".tgz");
     let is_zip = url.ends_with(".zip");
 
-    #[cfg(not(tarpaulin_include))]
     if !is_tar_gz && !is_zip {
         return Err(crate::error::PublisherError::Publish(
             "Unsupported artifact format".to_string(),
         ));
     }
-    #[cfg(not(tarpaulin_include))]
     {
         let response = client.get(url).send().await?.error_for_status()?;
         let bytes = response.bytes().await?;
