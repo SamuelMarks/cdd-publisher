@@ -333,26 +333,21 @@ mod tests {
     }
 
     #[test]
-    fn test_publish_job_serialization() {
+    fn test_publish_job_serialization() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let job = PublishJob {
             artifact_id: "test-artifact-123".to_string(),
             registry: "npm".to_string(),
         };
 
-        if let Ok(json) = serde_json::to_string(&job) {
-            assert_eq!(
-                json,
-                r#"{"artifact_id":"test-artifact-123","registry":"npm"}"#
-            );
+        let json = serde_json::to_string(&job)?;
+        assert_eq!(
+            json,
+            r#"{"artifact_id":"test-artifact-123","registry":"npm"}"#
+        );
 
-            if let Ok(deserialized) = serde_json::from_str::<PublishJob>(&json) {
-                assert_eq!(job, deserialized);
-            } else {
-                panic!("Failed to deserialize");
-            }
-        } else {
-            panic!("Failed to serialize");
-        }
+        let deserialized = serde_json::from_str::<PublishJob>(&json)?;
+        assert_eq!(job, deserialized);
+        Ok(())
     }
 
     #[tokio::test]
@@ -504,10 +499,8 @@ mod tests {
         };
 
         let result = worker.process_job(&job).await;
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(e.to_string().contains("Unsupported registry"));
-        }
+        let e = result.expect_err("Expected error");
+        assert!(e.to_string().contains("Unsupported registry"));
 
         // Missing token for PyPI
         let mut mock_queue_no_pypi = MockRedisQueue::new();
@@ -600,6 +593,15 @@ mod tests {
         };
         assert!(worker_pypi.process_job(&job_pypi_ok).await.is_ok());
 
+        // Failing PyPI
+        let pypi_exe_fail = create_dummy_exe(dest_pypi.path(), "twine_fail", 1);
+        worker_pypi.exe_paths.pypi = pypi_exe_fail;
+        let job_pypi_fail = PublishJob {
+            artifact_id: format!("{}/artifact.zip", mock_server.uri()),
+            registry: "pypi".to_string(),
+        };
+        assert!(worker_pypi.process_job(&job_pypi_fail).await.is_err());
+
         // Successful Cargo
         let dest_cargo = tempfile::TempDir::new().expect("Failed to create TempDir");
         let cargo_exe = create_dummy_exe(dest_cargo.path(), "cargo", 0);
@@ -628,6 +630,15 @@ mod tests {
             registry: "cargo".to_string(),
         };
         assert!(worker_cargo.process_job(&job_cargo_ok).await.is_ok());
+
+        // Failing Cargo
+        let cargo_exe_fail = create_dummy_exe(dest_cargo.path(), "cargo_fail", 1);
+        worker_cargo.exe_paths.cargo = cargo_exe_fail;
+        let job_cargo_fail = PublishJob {
+            artifact_id: format!("{}/artifact.zip", mock_server.uri()),
+            registry: "cargo".to_string(),
+        };
+        assert!(worker_cargo.process_job(&job_cargo_fail).await.is_err());
     }
 
     #[tokio::test]

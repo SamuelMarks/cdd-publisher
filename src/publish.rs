@@ -175,13 +175,11 @@ mod tests {
 
         let result =
             publish_npm_with_exe(dest.path(), "secret123", exe.to_str().expect("Valid path"));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            let err_msg = e.to_string();
-            assert!(err_msg.contains("npm publish failed"));
-            assert!(err_msg.contains("***"));
-            assert!(!err_msg.contains("secret123"));
-        }
+        let e = result.expect_err("Expected error");
+        let err_msg = e.to_string();
+        assert!(err_msg.contains("npm publish failed"));
+        assert!(err_msg.contains("***"));
+        assert!(!err_msg.contains("secret123"));
     }
 
     #[test]
@@ -206,13 +204,11 @@ mod tests {
 
         let result =
             publish_pypi_with_exe(dest.path(), "secret123", exe.to_str().expect("Valid path"));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            let err_msg = e.to_string();
-            assert!(err_msg.contains("twine upload failed"));
-            assert!(err_msg.contains("***"));
-            assert!(!err_msg.contains("secret123"));
-        }
+        let e = result.expect_err("Expected error");
+        let err_msg = e.to_string();
+        assert!(err_msg.contains("twine upload failed"));
+        assert!(err_msg.contains("***"));
+        assert!(!err_msg.contains("secret123"));
     }
 
     #[test]
@@ -232,13 +228,11 @@ mod tests {
 
         let result =
             publish_cargo_with_exe(dest.path(), "secret123", exe.to_str().expect("Valid path"));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            let err_msg = e.to_string();
-            assert!(err_msg.contains("cargo publish failed"));
-            assert!(err_msg.contains("***"));
-            assert!(!err_msg.contains("secret123"));
-        }
+        let e = result.expect_err("Expected error");
+        let err_msg = e.to_string();
+        assert!(err_msg.contains("cargo publish failed"));
+        assert!(err_msg.contains("***"));
+        assert!(!err_msg.contains("secret123"));
     }
 
     #[test]
