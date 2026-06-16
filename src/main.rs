@@ -20,8 +20,9 @@ async fn main() -> Result<()> {
     let group_name = "publisher_group";
     let consumer_name = "worker_1";
 
-    let control_plane_url = std::env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
-    
+    let control_plane_url =
+        std::env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+
     let tokens = worker::RegistryTokens {
         npm: std::env::var("NPM_TOKEN").ok(),
         pypi: std::env::var("TWINE_PASSWORD").ok(),
@@ -34,7 +35,15 @@ async fn main() -> Result<()> {
     let audit_client = audit::AuditClient::new(http_client, control_plane_url);
 
     println!("Starting cdd-publisher worker...");
-    let mut worker = Worker::new(connection, stream_name, group_name, consumer_name, tokens, audit_client).await?;
+    let mut worker = Worker::new(
+        connection,
+        stream_name,
+        group_name,
+        consumer_name,
+        tokens,
+        audit_client,
+    )
+    .await?;
     loop {
         worker.run_once().await?;
     }

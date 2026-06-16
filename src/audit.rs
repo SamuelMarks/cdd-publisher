@@ -51,7 +51,7 @@ impl AuditClient {
             .send()
             .await?
             .error_for_status()?;
-        
+
         Ok(())
     }
 }
@@ -59,12 +59,15 @@ impl AuditClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::{matchers::{method, path, body_json}, Mock, MockServer, ResponseTemplate};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{body_json, method, path},
+    };
 
     #[tokio::test]
     async fn test_report_status_success() {
         let mock_server = MockServer::start().await;
-        
+
         let payload = AuditPayload {
             artifact_id: "art-123".to_string(),
             registry: "npm".to_string(),
@@ -89,7 +92,7 @@ mod tests {
     #[tokio::test]
     async fn test_report_status_failure() {
         let mock_server = MockServer::start().await;
-        
+
         let payload = AuditPayload {
             artifact_id: "art-123".to_string(),
             registry: "npm".to_string(),
@@ -114,7 +117,7 @@ mod tests {
     #[tokio::test]
     async fn test_report_status_http_error() {
         let mock_server = MockServer::start().await;
-        
+
         let payload = AuditPayload {
             artifact_id: "art-123".to_string(),
             registry: "npm".to_string(),
