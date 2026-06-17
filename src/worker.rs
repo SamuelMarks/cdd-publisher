@@ -109,10 +109,7 @@ impl EventQueue for redis::aio::MultiplexedConnection {
         };
 
         let payload_bytes: Vec<u8> =
-            match redis::FromRedisValue::from_redis_value(payload_value.clone()) {
-                Ok(v) => v,
-                Err(_) => Vec::new(),
-            };
+            redis::FromRedisValue::from_redis_value(payload_value.clone()).unwrap_or_default();
 
         Ok(Some((id.id.clone(), payload_bytes)))
     }
@@ -303,10 +300,14 @@ impl<Q: EventQueue> Worker<Q> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
 
     fn create_dummy_exe(dir: &std::path::Path, name: &str, exit_code: i32) -> String {
         let exe_path = dir.join(name);
-        let script = format!("#!/bin/sh\nexit {}\n", exit_code);
+        let script = format!("#!/bin/sh\nexit {exit_code}\n");
         std::fs::write(&exe_path, script).expect("Failed to write mock exe");
         std::fs::set_permissions(
             &exe_path,
@@ -453,11 +454,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn test_worker_process_job() {
-        use wiremock::{
-            Mock, MockServer, ResponseTemplate,
-            matchers::{method, path},
-        };
         let mock_server = MockServer::start().await;
         let mut zip_data = Vec::new();
         {
@@ -671,15 +669,11 @@ mod tests {
         let npm_exe = create_dummy_exe(dest.path(), "npm", 0);
         let pypi_exe = create_dummy_exe(dest.path(), "twine", 0);
         let cargo_exe = create_dummy_exe(dest.path(), "cargo", 0);
+
         let exe_paths = ExecutablePaths {
             npm: npm_exe,
             pypi: pypi_exe,
             cargo: cargo_exe,
-        };
-
-        use wiremock::{
-            Mock, MockServer, ResponseTemplate,
-            matchers::{method, path},
         };
         let mock_server = MockServer::start().await;
         let mut zip_data = Vec::new();
