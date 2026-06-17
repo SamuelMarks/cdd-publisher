@@ -66,7 +66,7 @@ mod tests {
                 println!("ERROR IS: {e}");
                 assert!(e.to_string().contains("Unsupported artifact format"));
             }
-            Ok(_) => panic!("Expected error"),
+            Ok(()) => panic!("Expected error"),
         }
     }
 

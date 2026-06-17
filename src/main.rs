@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 //! Main entry point for the `cdd-publisher` application.
 
 pub mod audit;
