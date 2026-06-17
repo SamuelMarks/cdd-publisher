@@ -61,9 +61,12 @@ mod tests {
 
         let result = fetch_and_unpack(&client, "http://localhost/file.txt", dest.path()).await;
         assert!(result.is_err());
-        if let Err(e) = result {
-            println!("ERROR IS: {e}");
-            assert!(e.to_string().contains("Unsupported artifact format"));
+        match result {
+            Err(e) => {
+                println!("ERROR IS: {e}");
+                assert!(e.to_string().contains("Unsupported artifact format"));
+            }
+            Ok(_) => panic!("Expected error"),
         }
     }
 

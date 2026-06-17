@@ -319,8 +319,8 @@ mod tests {
     use crate::audit::AuditClient;
     use mockall::mock;
 
-    fn get_dummy_audit_client() -> AuditClient {
-        AuditClient::new(reqwest::Client::new(), "http://localhost".to_string())
+    fn get_dummy_audit_client(url: &str) -> AuditClient {
+        AuditClient::new(reqwest::Client::new(), url.to_string())
     }
 
     mock! {
@@ -362,7 +362,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await;
         assert!(worker.is_ok());
@@ -381,7 +381,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await;
         assert!(worker.is_err());
@@ -399,7 +399,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -422,7 +422,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -445,7 +445,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -485,7 +485,7 @@ mod tests {
             "group",
             "consumer",
             tokens,
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -511,7 +511,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -532,7 +532,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -552,7 +552,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -580,7 +580,7 @@ mod tests {
             "group",
             "consumer",
             tokens_pypi,
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -618,7 +618,7 @@ mod tests {
             "group",
             "consumer",
             tokens_cargo,
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -657,7 +657,7 @@ mod tests {
             "group",
             "consumer",
             RegistryTokens::default(),
-            get_dummy_audit_client(),
+            get_dummy_audit_client("http://localhost"),
         )
         .await
         .expect("Failed to create");
@@ -690,6 +690,12 @@ mod tests {
             .mount(&mock_server)
             .await;
 
+        Mock::given(method("POST"))
+            .and(path("/api/v1/audit/publish"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
         let mut mock_queue = MockRedisQueue::new();
         mock_queue.expect_create_group().returning(|_, _| Ok(()));
         let job_url = format!("{}/artifact.zip", mock_server.uri());
@@ -710,7 +716,7 @@ mod tests {
             "group",
             "consumer",
             tokens,
-            get_dummy_audit_client(),
+            get_dummy_audit_client(&mock_server.uri()),
         )
         .await
         .expect("Failed to create worker");
