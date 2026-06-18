@@ -47,10 +47,10 @@ jobs:
         run: cargo doc --no-deps
 
       - name: Build debian Docker image
-        run: docker build -t cdd-ctl:debian -f debian.Dockerfile .
+        run: docker build -t cdd-publisher:debian -f debian.Dockerfile .
 
       - name: Build alpine Docker image
-        run: docker build -t cdd-ctl:alpine -f alpine.Dockerfile .
+        run: docker build -t cdd-publisher:alpine -f alpine.Dockerfile .
 
   release:
     name: Build & Release Binaries
@@ -60,16 +60,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: cdd-ctl
+            artifact_name: cdd-publisher
           - os: macos-13
             target: x86_64-apple-darwin
-            artifact_name: cdd-ctl
+            artifact_name: cdd-publisher
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: cdd-ctl
+            artifact_name: cdd-publisher
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: cdd-ctl.exe
+            artifact_name: cdd-publisher.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
