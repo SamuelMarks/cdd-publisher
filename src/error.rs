@@ -57,11 +57,14 @@ mod tests {
     }
 
     #[test]
-    fn test_error_from_json() {
+    fn test_error_from_json() -> Result<()> {
         let json_result = serde_json::from_str::<serde_json::Value>("invalid json");
-        let json_err = json_result.expect_err("Expected error");
+        let Err(json_err) = json_result else {
+            return Err(PublisherError::Publish("Expected error".to_string()));
+        };
         let err: PublisherError = json_err.into();
         assert!(err.to_string().starts_with("JSON error:"));
+        Ok(())
     }
 
     #[test]

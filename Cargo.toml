@@ -2,6 +2,11 @@
 name = "cdd-publisher"
 version = "0.1.0"
 edition = "2024"
+description = "CDD Publisher"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/cdd-publisher"
+keywords = ["cdd", "publisher"]
+categories = ["development-tools"]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -22,8 +27,13 @@ missing_docs = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(coverage)'] }
 
 [lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 unwrap_used = "deny"
-pedantic = { level = "warn", priority = -1 }
+expect_used = "deny"
+multiple_crate_versions = "allow"
 
 [dev-dependencies]
 mockall = "0.14.0"

@@ -30,7 +30,7 @@ pub struct AuditClient {
 impl AuditClient {
     /// Creates a new `AuditClient`.
     #[must_use]
-    pub fn new(client: Client, control_plane_url: String) -> Self {
+    pub const fn new(client: Client, control_plane_url: String) -> Self {
         Self {
             client,
             control_plane_url,

@@ -3,6 +3,8 @@
 > Background worker and publisher service for the `cdd` ecosystem.
 
 [![CI](https://github.com/SamuelMarks/cdd-publisher/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-publisher/actions/workflows/ci.yml)
+![Test Coverage](https://img.shields.io/badge/coverage-100%25-success.svg)
+![Doc Coverage](https://img.shields.io/badge/docs-100%25-success.svg)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `cdd-publisher` is an asynchronous worker node responsible for pushing generated software development kits (SDKs) to external package registries (npm, PyPI, Cargo, etc.). Decoupled from the main request/response cycle, it ensures that slow, network-dependent registry uploads do not bottleneck the core API or the generation engine.

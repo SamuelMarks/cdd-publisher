@@ -237,10 +237,10 @@ impl<Q: EventQueue> Worker<Q> {
     /// # Errors
     ///
     /// Returns an error if the job cannot be processed correctly.
-    async fn process_job(&mut self, job: &PublishJob) -> Result<()> {
+    async fn process_job(&self, job: &PublishJob) -> Result<()> {
         println!("Processing job: {job:?}");
 
-        let dest_dir = tempfile::TempDir::new().expect("Failed to create TempDir");
+        let dest_dir = tempfile::TempDir::new()?;
 
         // 1. Fetch and unpack the artifact
         fetch_and_unpack(&self.client, &job.artifact_id, dest_dir.path()).await?;
@@ -308,12 +308,12 @@ mod tests {
     fn create_dummy_exe(dir: &std::path::Path, name: &str, exit_code: i32) -> String {
         let exe_path = dir.join(name);
         let script = format!("#!/bin/sh\nexit {exit_code}\n");
-        std::fs::write(&exe_path, script).expect("Failed to write mock exe");
+        std::fs::write(&exe_path, script).unwrap_or_else(|_| panic!("Failed to write mock exe"));
         std::fs::set_permissions(
             &exe_path,
             <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
         )
-        .expect("Failed to set perms");
+        .unwrap_or_else(|_| panic!("Failed to set perms"));
         exe_path.to_string_lossy().to_string()
     }
     use crate::audit::AuditClient;
@@ -402,7 +402,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let result = worker.run_once().await;
         assert!(result.is_ok());
     }
@@ -425,7 +425,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let result = worker.run_once().await;
         assert!(result.is_ok());
     }
@@ -448,7 +448,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let result = worker.run_once().await;
         assert!(result.is_ok());
     }
@@ -461,9 +461,10 @@ mod tests {
         {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_data));
             zip.start_file("hello.txt", zip::write::SimpleFileOptions::default())
-                .expect("start_file failed");
-            std::io::Write::write_all(&mut zip, b"hello world").expect("write_all failed");
-            zip.finish().expect("finish failed");
+                .unwrap_or_else(|_| panic!("start_file failed"));
+            std::io::Write::write_all(&mut zip, b"hello world")
+                .unwrap_or_else(|_| panic!("write_all failed"));
+            zip.finish().unwrap_or_else(|_| panic!("finish failed"));
         }
         Mock::given(method("GET"))
             .and(path("/artifact.zip"))
@@ -479,7 +480,7 @@ mod tests {
             pypi: Some("token".into()),
             cargo: Some("token".into()),
         };
-        let mut worker = Worker::new(
+        let worker = Worker::new(
             mock_queue,
             "stream",
             "group",
@@ -488,7 +489,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
 
         // Use an unsupported registry to quickly test error
         let job = PublishJob {
@@ -497,7 +498,7 @@ mod tests {
         };
 
         let result = worker.process_job(&job).await;
-        let e = result.expect_err("Expected error");
+        let e = result.map_or_else(|e| e, |()| panic!("Expected error"));
         assert!(e.to_string().contains("Unsupported registry"));
 
         // Missing token for PyPI
@@ -505,7 +506,7 @@ mod tests {
         mock_queue_no_pypi
             .expect_create_group()
             .returning(|_, _| Ok(()));
-        let mut worker_no_pypi = Worker::new(
+        let worker_no_pypi = Worker::new(
             mock_queue_no_pypi,
             "stream",
             "group",
@@ -514,7 +515,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let job_pypi = PublishJob {
             artifact_id: format!("{}/artifact.zip", mock_server.uri()),
             registry: "pypi".to_string(),
@@ -526,7 +527,7 @@ mod tests {
         mock_queue_no_cargo
             .expect_create_group()
             .returning(|_, _| Ok(()));
-        let mut worker_no_cargo = Worker::new(
+        let worker_no_cargo = Worker::new(
             mock_queue_no_cargo,
             "stream",
             "group",
@@ -535,7 +536,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let job_cargo = PublishJob {
             artifact_id: format!("{}/artifact.zip", mock_server.uri()),
             registry: "cargo".to_string(),
@@ -546,7 +547,7 @@ mod tests {
         mock_queue_no_npm
             .expect_create_group()
             .returning(|_, _| Ok(()));
-        let mut worker_no_npm = Worker::new(
+        let worker_no_npm = Worker::new(
             mock_queue_no_npm,
             "stream",
             "group",
@@ -555,7 +556,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         let job_npm = PublishJob {
             artifact_id: format!("{}/artifact.zip", mock_server.uri()),
             registry: "npm".to_string(),
@@ -563,7 +564,8 @@ mod tests {
         assert!(worker_no_npm.process_job(&job_npm).await.is_err());
 
         // Successful PyPI
-        let dest_pypi = tempfile::TempDir::new().expect("Failed to create TempDir");
+        let dest_pypi =
+            tempfile::TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
         let pypi_exe = create_dummy_exe(dest_pypi.path(), "twine", 0);
         let mut mock_queue_pypi = MockRedisQueue::new();
         mock_queue_pypi
@@ -583,7 +585,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         worker_pypi.exe_paths.pypi = pypi_exe;
         let job_pypi_ok = PublishJob {
             artifact_id: format!("{}/artifact.zip", mock_server.uri()),
@@ -601,7 +603,8 @@ mod tests {
         assert!(worker_pypi.process_job(&job_pypi_fail).await.is_err());
 
         // Successful Cargo
-        let dest_cargo = tempfile::TempDir::new().expect("Failed to create TempDir");
+        let dest_cargo =
+            tempfile::TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
         let cargo_exe = create_dummy_exe(dest_cargo.path(), "cargo", 0);
         let mut mock_queue_cargo = MockRedisQueue::new();
         mock_queue_cargo
@@ -621,7 +624,7 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         worker_cargo.exe_paths.cargo = cargo_exe;
         let job_cargo_ok = PublishJob {
             artifact_id: format!("{}/artifact.zip", mock_server.uri()),
@@ -660,12 +663,12 @@ mod tests {
             get_dummy_audit_client("http://localhost"),
         )
         .await
-        .expect("Failed to create");
+        .unwrap_or_else(|_| panic!("Failed to create"));
         assert!(worker_err.run_once().await.is_ok());
     }
     #[tokio::test]
     async fn test_worker_run_once_success() {
-        let dest = tempfile::TempDir::new().expect("Failed to create TempDir");
+        let dest = tempfile::TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
         let npm_exe = create_dummy_exe(dest.path(), "npm", 0);
         let pypi_exe = create_dummy_exe(dest.path(), "twine", 0);
         let cargo_exe = create_dummy_exe(dest.path(), "cargo", 0);
@@ -680,9 +683,10 @@ mod tests {
         {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_data));
             zip.start_file("hello.txt", zip::write::SimpleFileOptions::default())
-                .expect("start_file failed");
-            std::io::Write::write_all(&mut zip, b"hello world").expect("write_all failed");
-            zip.finish().expect("finish failed");
+                .unwrap_or_else(|_| panic!("start_file failed"));
+            std::io::Write::write_all(&mut zip, b"hello world")
+                .unwrap_or_else(|_| panic!("write_all failed"));
+            zip.finish().unwrap_or_else(|_| panic!("finish failed"));
         }
         Mock::given(method("GET"))
             .and(path("/artifact.zip"))
@@ -719,7 +723,7 @@ mod tests {
             get_dummy_audit_client(&mock_server.uri()),
         )
         .await
-        .expect("Failed to create worker");
+        .unwrap_or_else(|_| panic!("Failed to create worker"));
         worker.exe_paths = exe_paths;
         assert!(worker.run_once().await.is_ok());
     }

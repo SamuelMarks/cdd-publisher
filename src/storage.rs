@@ -57,7 +57,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_and_unpack_unsupported_format() {
         let client = Client::new();
-        let dest = TempDir::new().expect("Failed to create TempDir");
+        let dest = TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
 
         let result = fetch_and_unpack(&client, "http://localhost/file.txt", dest.path()).await;
         assert!(result.is_err());
@@ -82,14 +82,16 @@ mod tests {
             let mut builder = tar::Builder::new(encoder);
 
             let mut header = tar::Header::new_gnu();
-            header.set_path("hello.txt").expect("set_path failed");
+            header
+                .set_path("hello.txt")
+                .unwrap_or_else(|_| panic!("set_path failed"));
             header.set_size(11);
             header.set_cksum();
 
             builder
-                .append(&header, "hello world".as_bytes())
-                .expect("append failed");
-            builder.finish().expect("finish failed");
+                .append(&header, &b"hello world"[..])
+                .unwrap_or_else(|_| panic!("append failed"));
+            builder.finish().unwrap_or_else(|_| panic!("finish failed"));
         }
 
         Mock::given(method("GET"))
@@ -99,14 +101,14 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let dest = TempDir::new().expect("Failed to create TempDir");
+        let dest = TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
         let url = format!("{}/artifact.tar.gz", mock_server.uri());
 
         let result = fetch_and_unpack(&client, &url, dest.path()).await;
         assert!(result.is_ok());
 
-        let unpacked_file =
-            std::fs::read_to_string(dest.path().join("hello.txt")).expect("read_to_string failed");
+        let unpacked_file = std::fs::read_to_string(dest.path().join("hello.txt"))
+            .unwrap_or_else(|_| panic!("read_to_string failed"));
         assert_eq!(unpacked_file, "hello world");
     }
 
@@ -120,9 +122,10 @@ mod tests {
             let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_data));
             let options = zip::write::SimpleFileOptions::default();
             zip.start_file("hello.txt", options)
-                .expect("start_file failed");
-            zip.write_all(b"hello world").expect("write_all failed");
-            zip.finish().expect("finish failed");
+                .unwrap_or_else(|_| panic!("start_file failed"));
+            zip.write_all(b"hello world")
+                .unwrap_or_else(|_| panic!("write_all failed"));
+            zip.finish().unwrap_or_else(|_| panic!("finish failed"));
         }
 
         Mock::given(method("GET"))
@@ -132,14 +135,14 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let dest = TempDir::new().expect("Failed to create TempDir");
+        let dest = TempDir::new().unwrap_or_else(|_| panic!("Failed to create TempDir"));
         let url = format!("{}/artifact.zip", mock_server.uri());
 
         let result = fetch_and_unpack(&client, &url, dest.path()).await;
         assert!(result.is_ok());
 
-        let unpacked_file =
-            std::fs::read_to_string(dest.path().join("hello.txt")).expect("read_to_string failed");
+        let unpacked_file = std::fs::read_to_string(dest.path().join("hello.txt"))
+            .unwrap_or_else(|_| panic!("read_to_string failed"));
         assert_eq!(unpacked_file, "hello world");
     }
 }

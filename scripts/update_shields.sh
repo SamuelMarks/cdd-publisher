@@ -8,7 +8,7 @@ then
 fi
 
 echo "Running tests and calculating coverage..."
-COVERAGE=$(DATABASE_URL=postgres://postgres:password@localhost/cdd cargo tarpaulin --engine llvm --timeout 120 --out Lcov 2>&1 | grep -oE "coverage: [0-9.]+" | awk '{print $2}')
+COVERAGE=$(DATABASE_URL=postgres://postgres:password@localhost/cdd cargo tarpaulin --engine llvm --timeout 120 --out Lcov 2>&1 | grep -oE "^[0-9.]+% coverage" | awk '{print $1}' | tr -d '%')
 if [ -z "$COVERAGE" ]; then
     COVERAGE="0"
 fi
@@ -24,7 +24,7 @@ else
 fi
 
 # Calculate doc coverage using nightly rustdoc
-DOC_COVERAGE_RAW=$(cargo +nightly rustdoc --lib -- -Z unstable-options --show-coverage 2>&1 | grep "Total" | awk '{print $6}' | tr -d '%')
+DOC_COVERAGE_RAW=$(cargo +nightly rustdoc -- -Z unstable-options --show-coverage 2>&1 | grep "Total" | awk '{print $6}' | tr -d '%')
 if [ -z "$DOC_COVERAGE_RAW" ]; then
     DOC_COVERAGE_RAW="0"
 fi
@@ -40,10 +40,10 @@ fi
 
 # Update README.md
 if [ "$COVERAGE_ROUNDED" -gt 0 ]; then
-    sed -i -E "s/!\[Test Coverage\]\(https:\/\/img\.shields\.io\/badge\/coverage-[0-9.]+.*?%25-.*?\.svg\)/![Test Coverage](https:\/\/img.shields.io\/badge\/coverage-${COVERAGE_ROUNDED}%25-${TEST_COLOR}.svg)/g" README.md
+    sed -E "s/!\[Test Coverage\]\(https:\/\/img\.shields\.io\/badge\/coverage-[^)]+\)/![Test Coverage](https:\/\/img.shields.io\/badge\/coverage-${COVERAGE_ROUNDED}%25-${TEST_COLOR}.svg)/g" README.md > README.tmp && mv README.tmp README.md
 fi
 
-sed -i -E "s/!\[Doc Coverage\]\(https:\/\/img\.shields\.io\/badge\/docs-[0-9.]+.*?%25-.*?\.svg\)/![Doc Coverage](https:\/\/img.shields.io\/badge\/docs-${DOC_COVERAGE}%25-${DOC_COLOR}.svg)/g" README.md
+sed -E "s/!\[Doc Coverage\]\(https:\/\/img\.shields\.io\/badge\/docs-[^)]+\)/![Doc Coverage](https:\/\/img.shields.io\/badge\/docs-${DOC_COVERAGE}%25-${DOC_COLOR}.svg)/g" README.md > README.tmp && mv README.tmp README.md
 
 if [ "$COVERAGE_ROUNDED" -gt 0 ]; then
     echo "Updated shields in README.md (Test: ${COVERAGE_ROUNDED}%, Doc: ${DOC_COVERAGE}%)"
