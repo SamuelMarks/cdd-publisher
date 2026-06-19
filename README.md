@@ -18,5 +18,65 @@ While users interact primarily with the [CDD Web UI](../cdd-web-ui)—the centra
 - **Secure Handling:** Receives decrypted secrets in-memory just-in-time to perform registry authentication.
 - **Audit Logging:** Reports the success or failure of release events back to the control plane.
 
+## Prerequisites
+
+- **Rust** (Edition 2024 via the `cargo` toolchain)
+- **Redis** server for the event queue broker
+- **Python 3** (for local development doc checks)
+- **Pre-commit** (for Git hooks)
+
+## Getting Started
+
+### 1. Start the Event Broker (Redis)
+You can start a local development Redis server on port 63799:
+```bash
+redis-server --port 63799
+```
+
+### 2. Run the Publisher
+Execute the worker node using Cargo:
+```bash
+cargo run
+```
+
+## Development and Contributing
+
+Our codebase enforces 100% documentation coverage and strict linting. 
+
+- **Testing:** Run the comprehensive test suite with `cargo test`.
+- **Linting:** We enforce strict Clippy rules. Run `cargo clippy --all-targets --all-features`.
+- **Pre-commit:** Install pre-commit hooks to ensure code quality before pushing:
+  ```bash
+  pre-commit install
+  ```
+- **Documentation Coverage:** Ensure all public and internal items are documented. You can check for missing docs using the provided utility:
+  ```bash
+  python check_docs.py
+  ```
+
+## Deployment
+
+The project includes Dockerfiles for containerized deployment:
+- `alpine.Dockerfile`: For a minimal, musl-based deployment.
+- `debian.Dockerfile`: For glibc-based deployment.
+
+## Architecture
+
+For more deep-dive technical details on constraints, security, and internal workflows, refer to the [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
 ## License
-Dual-licensed under Apache 2.0 and MIT.
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.

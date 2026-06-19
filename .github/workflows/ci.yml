@@ -22,12 +22,12 @@ jobs:
           submodules: recursive
 
       - name: Install dependencies
-      - name: Start Redis
-        run: sudo systemctl start redis-server || redis-server --daemonize yes
-
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev gcc libpq-dev redis-server
+
+      - name: Start Redis
+        run: sudo systemctl start redis-server || redis-server --daemonize yes
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
