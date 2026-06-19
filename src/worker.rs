@@ -730,8 +730,9 @@ mod tests {
 
 #[tokio::test]
 async fn test_redis_event_queue() {
-    let client = redis::Client::open("redis://127.0.0.1:63799/").unwrap();
-    if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+    if let Ok(client) = redis::Client::open("redis://127.0.0.1:63799/")
+        && let Ok(mut conn) = client.get_multiplexed_async_connection().await
+    {
         let _ = conn.create_group("test_stream", "test_group").await;
         let _ = conn
             .read_one("test_stream", "test_group", "test_consumer")

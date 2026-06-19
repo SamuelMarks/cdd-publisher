@@ -264,12 +264,13 @@ mod tests {
     }
 
     #[test]
-    fn test_publish_npm_io_error() {
-        let dest = TempDir::new().unwrap();
-        let mut perms = std::fs::metadata(dest.path()).unwrap().permissions();
+    fn test_publish_npm_io_error() -> std::io::Result<()> {
+        let dest = TempDir::new()?;
+        let mut perms = std::fs::metadata(dest.path())?.permissions();
         perms.set_readonly(true);
-        std::fs::set_permissions(dest.path(), perms).unwrap();
+        std::fs::set_permissions(dest.path(), perms)?;
         let result = publish_npm_with_exe(dest.path(), "token", "npm");
         assert!(result.is_err());
+        Ok(())
     }
 }

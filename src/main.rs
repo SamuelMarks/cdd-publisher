@@ -66,29 +66,30 @@ mod tests {
 }
 
 #[tokio::test]
-async fn test_main_loop_exit_on_redis_error() {
+async fn test_main_loop_exit_on_redis_error() -> std::result::Result<(), Box<dyn std::error::Error>>
+{
     // Start a redis server on a specific port
     let mut redis_proc = std::process::Command::new("redis-server")
         .arg("--port")
         .arg("63800")
-        .spawn()
-        .unwrap();
+        .spawn()?;
 
     // Give it a moment to start
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     unsafe { std::env::set_var("REDIS_URL", "redis://127.0.0.1:63800/") };
 
-    let handle = tokio::task::spawn_blocking(|| main());
+    let handle = tokio::task::spawn_blocking(main);
 
     // Let main connect and enter the loop
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Kill redis
-    redis_proc.kill().unwrap();
-    redis_proc.wait().unwrap();
+    redis_proc.kill()?;
+    redis_proc.wait()?;
 
     // Main should now exit with an error because the connection was lost
-    let result = handle.await.unwrap();
+    let result = handle.await?;
     assert!(result.is_err());
+    Ok(())
 }

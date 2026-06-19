@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetch_and_unpack_http_error() {
+    async fn test_fetch_and_unpack_http_error() -> std::io::Result<()> {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/artifact.zip"))
@@ -156,10 +156,11 @@ mod tests {
             .await;
 
         let client = Client::new();
-        let dest = TempDir::new().unwrap();
+        let dest = TempDir::new()?;
         let url = format!("{}/artifact.zip", mock_server.uri());
 
         let result = fetch_and_unpack(&client, &url, dest.path()).await;
         assert!(result.is_err());
+        Ok(())
     }
 }
