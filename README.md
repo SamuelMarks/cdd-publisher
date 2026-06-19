@@ -7,7 +7,10 @@
 ![Doc Coverage](https://img.shields.io/badge/docs-100%25-success.svg)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-`cdd-publisher` is an asynchronous worker node responsible for pushing generated software development kits (SDKs) to external package registries (npm, PyPI, Cargo, etc.). Decoupled from the main request/response cycle, it ensures that slow, network-dependent registry uploads do not bottleneck the core API or the generation engine.
+`cdd-publisher` is an asynchronous worker node responsible for pushing generated software development kits (SDKs) to external package registries (npm, PyPI, Cargo, etc.).
+
+## Ecosystem Integration
+While users interact primarily with the [CDD Web UI](../cdd-web-ui)—the central graphical interface for configuring, generating, and reviewing SDKs—`cdd-publisher` operates entirely in the background. When a user triggers a release from the Web UI, the request flows through the control plane to the publisher queue. This architecture ensures that slow, network-dependent registry uploads do not bottleneck the frontend experience or the core generation engine.
 
 ## Features
 - **Asynchronous Execution:** Listens to event queues for publish requests.

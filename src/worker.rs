@@ -65,7 +65,6 @@ pub trait EventQueue: Send + Sync {
 
 /// Implementation of `EventQueue` for Redis `MultiplexedConnection`.
 #[async_trait]
-#[cfg(not(tarpaulin_include))]
 impl EventQueue for redis::aio::MultiplexedConnection {
     async fn create_group(&mut self, stream: &str, group: &str) -> Result<()> {
         let result: redis::RedisResult<()> =
@@ -726,5 +725,17 @@ mod tests {
         .unwrap_or_else(|_| panic!("Failed to create worker"));
         worker.exe_paths = exe_paths;
         assert!(worker.run_once().await.is_ok());
+    }
+}
+
+#[tokio::test]
+async fn test_redis_event_queue() {
+    let client = redis::Client::open("redis://127.0.0.1:63799/").unwrap();
+    if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+        let _ = conn.create_group("test_stream", "test_group").await;
+        let _ = conn
+            .read_one("test_stream", "test_group", "test_consumer")
+            .await;
+        let _ = conn.ack("test_stream", "test_group", "1-0").await;
     }
 }

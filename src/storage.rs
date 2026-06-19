@@ -145,4 +145,21 @@ mod tests {
             .unwrap_or_else(|_| panic!("read_to_string failed"));
         assert_eq!(unpacked_file, "hello world");
     }
+
+    #[tokio::test]
+    async fn test_fetch_and_unpack_http_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/artifact.zip"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let client = Client::new();
+        let dest = TempDir::new().unwrap();
+        let url = format!("{}/artifact.zip", mock_server.uri());
+
+        let result = fetch_and_unpack(&client, &url, dest.path()).await;
+        assert!(result.is_err());
+    }
 }

@@ -57,6 +57,7 @@ impl AuditClient {
 }
 
 #[cfg(test)]
+/// Tests for the `audit` module.
 mod tests {
     use super::*;
     use wiremock::{
@@ -64,6 +65,7 @@ mod tests {
         matchers::{body_json, method, path},
     };
 
+    /// Tests reporting a successful publishing job.
     #[tokio::test]
     async fn test_report_status_success() {
         let mock_server = MockServer::start().await;
@@ -89,6 +91,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Tests reporting a failed publishing job.
     #[tokio::test]
     async fn test_report_status_failure() {
         let mock_server = MockServer::start().await;
@@ -114,6 +117,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Tests handling HTTP errors during audit report.
     #[tokio::test]
     async fn test_report_status_http_error() {
         let mock_server = MockServer::start().await;

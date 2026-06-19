@@ -1,17 +1,22 @@
 #![deny(missing_docs)]
+#![deny(clippy::missing_docs_in_private_items)]
 //! Main entry point for the `cdd-publisher` application.
 
+/// Audit client for telemetry.
 pub mod audit;
+/// Error types and handling.
 pub mod error;
+/// Registry publishing logic.
 pub mod publish;
+/// Artifact fetching and extraction.
 pub mod storage;
+/// Background worker processing loop.
 pub mod worker;
 
 use error::Result;
 use worker::Worker;
 
 /// Main function for the `cdd-publisher` application.
-#[cfg(not(tarpaulin_include))]
 #[tokio::main]
 async fn main() -> Result<()> {
     let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
@@ -46,4 +51,44 @@ async fn main() -> Result<()> {
     loop {
         worker.run_once().await?;
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_main_redis_error() {
+        unsafe { std::env::set_var("REDIS_URL", "redis://127.0.0.1:1/invalid") }; //("REDIS_URL", "redis://127.0.0.1:1/invalid");
+        let result = main();
+        assert!(result.is_err());
+    }
+}
+
+#[tokio::test]
+async fn test_main_loop_exit_on_redis_error() {
+    // Start a redis server on a specific port
+    let mut redis_proc = std::process::Command::new("redis-server")
+        .arg("--port")
+        .arg("63800")
+        .spawn()
+        .unwrap();
+
+    // Give it a moment to start
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    unsafe { std::env::set_var("REDIS_URL", "redis://127.0.0.1:63800/") };
+
+    let handle = tokio::task::spawn_blocking(|| main());
+
+    // Let main connect and enter the loop
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Kill redis
+    redis_proc.kill().unwrap();
+    redis_proc.wait().unwrap();
+
+    // Main should now exit with an error because the connection was lost
+    let result = handle.await.unwrap();
+    assert!(result.is_err());
 }

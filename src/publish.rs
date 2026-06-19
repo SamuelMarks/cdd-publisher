@@ -262,4 +262,14 @@ mod tests {
         let _ = publish_pypi(dest.path(), "test");
         let _ = publish_cargo(dest.path(), "test");
     }
+
+    #[test]
+    fn test_publish_npm_io_error() {
+        let dest = TempDir::new().unwrap();
+        let mut perms = std::fs::metadata(dest.path()).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(dest.path(), perms).unwrap();
+        let result = publish_npm_with_exe(dest.path(), "token", "npm");
+        assert!(result.is_err());
+    }
 }
