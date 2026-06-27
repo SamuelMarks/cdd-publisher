@@ -91,7 +91,12 @@ mod tests {
             builder
                 .append(&header, &b"hello world"[..])
                 .unwrap_or_else(|_| panic!("append failed"));
-            builder.finish().unwrap_or_else(|_| panic!("finish failed"));
+            let encoder = builder
+                .into_inner()
+                .unwrap_or_else(|_| panic!("builder into_inner failed"));
+            let _ = encoder
+                .finish()
+                .unwrap_or_else(|_| panic!("encoder finish failed"));
         }
 
         Mock::given(method("GET"))

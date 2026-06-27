@@ -13,7 +13,7 @@ async-trait = "0.1.89"
 derive_more = { version = "2.1.1", features = ["display", "from", "error"] }
 flate2 = "1.1.9"
 redis = { version = "1.2.3", features = ["tokio-comp"] }
-reqwest = { version = "0.13.4", default-features = false, features = ["stream", "native-tls", "charset", "http2", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["stream", "rustls", "charset", "http2", "json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 tar = "0.4.46"
