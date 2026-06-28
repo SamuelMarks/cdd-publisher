@@ -13,14 +13,13 @@ async-trait = "0.1.89"
 derive_more = { version = "2.1.1", features = ["display", "from", "error"] }
 flate2 = "1.1.9"
 redis = { version = "1.2.3", features = ["tokio-comp"] }
-reqwest = { version = "0.13.4", default-features = false, features = ["stream", "rustls", "charset", "http2", "json"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 tar = "0.4.46"
 tempfile = "3.27.0"
-tokio = { version = "1.52.3", features = ["full"] }
-tokio-util = { version = "0.7.18", features = ["io"] }
-zip = "8.6.0"
+tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread", "macros", "time"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [lints.rust]
 missing_docs = "deny"
@@ -39,4 +38,3 @@ multiple_crate_versions = "allow"
 mockall = "0.14.0"
 tokio-test = "0.4.5"
 wiremock = "0.6.5"
-
