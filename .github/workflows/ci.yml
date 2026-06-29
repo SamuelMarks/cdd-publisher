@@ -85,10 +85,18 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename artifact
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/cdd-publisher-${{ matrix.target }}.exe
+          else
+            mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/cdd-publisher-${{ matrix.target }}
+          fi
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
         with:
-          files: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          files: target/${{ matrix.target }}/release/cdd-publisher-${{ matrix.target }}*
           name: Release ${{ github.ref_name }}
 
   update_latest_tag:
