@@ -9,17 +9,16 @@ keywords = ["cdd", "publisher"]
 categories = ["development-tools"]
 
 [dependencies]
-async-trait = "0.1.89"
-derive_more = { version = "2.1.1", features = ["display", "from", "error"] }
-flate2 = "1.1.9"
-redis = { version = "1.2.3", features = ["tokio-comp"] }
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-tar = "0.4.46"
-tempfile = "3.27.0"
-tokio = { version = "1.52.3", default-features = false, features = ["rt-multi-thread", "macros", "time"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+derive_more = { version = "2.1", default-features = false, features = ["as_ref", "display", "error", "from", "into", "std"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+redis = { version = "1.7", default-features = false, features = ["streams", "tokio-comp"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+tar = { version = "0.4", default-features = false }
+tempfile = { version = "3.27", default-features = false }
+tokio = { version = "1.54", default-features = false, features = ["macros", "rt-multi-thread"] }
+zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
 
 [lints.rust]
 missing_docs = "deny"
@@ -35,6 +34,4 @@ expect_used = "deny"
 multiple_crate_versions = "allow"
 
 [dev-dependencies]
-mockall = "0.14.0"
-tokio-test = "0.4.5"
-wiremock = "0.6.5"
+wiremock = { version = "0.6", default-features = false }

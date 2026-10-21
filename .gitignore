@@ -5,8 +5,11 @@
 # ---------------------------------------------------
 # Temporary planning and scratch files
 *PLAN*.md
+UNDERCOVERED.md
 scratch*
 *.tmp
+*.orig
+*.rej
 
 # Common build and runtime artifacts
 build/

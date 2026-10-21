@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/SamuelMarks/cdd-publisher/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-publisher/actions/workflows/ci.yml)
 ![Test Coverage](https://img.shields.io/badge/coverage-100%25-success.svg)
-![Doc Coverage](https://img.shields.io/badge/docs-0%25-red.svg)
+![Doc Coverage](https://img.shields.io/badge/docs-100%25-success.svg)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `cdd-publisher` is an asynchronous worker node responsible for pushing generated software development kits (SDKs) to external package registries (npm, PyPI, Cargo, etc.).
@@ -15,43 +15,42 @@ While users interact primarily with the [CDD Web UI](../cdd-web-ui)—the centra
 ## Features
 - **Asynchronous Execution:** Listens to event queues for publish requests.
 - **Registry Integration:** Orchestrates package manager commands safely and consistently.
-- **Secure Handling:** Receives decrypted secrets in-memory just-in-time to perform registry authentication.
+- **Secure Handling:** Receives decrypted secrets in-memory just-in-time to perform registry authentication, redacting tokens in logs and passing credentials via environment variables.
 - **Audit Logging:** Reports the success or failure of release events back to the control plane.
 
 ## Prerequisites
 
 - **Rust** (Edition 2024 via the `cargo` toolchain)
 - **Redis** server for the event queue broker
-- **Python 3** (for local development doc checks)
 - **Pre-commit** (for Git hooks)
 
 ## Getting Started
 
 ### 1. Start the Event Broker (Redis)
-You can start a local development Redis server on port 63799:
+You can start a local development Redis server on the default port (6379):
 ```bash
-redis-server --port 63799
+redis-server
 ```
 
 ### 2. Run the Publisher
-Execute the worker node using Cargo:
+Execute the worker node using Cargo (configure `REDIS_URL`, `CONTROL_PLANE_URL`, `NPM_TOKEN`, `TWINE_PASSWORD`, and `CARGO_REGISTRY_TOKEN` as needed):
 ```bash
 cargo run
 ```
 
 ## Development and Contributing
 
-Our codebase enforces 100% documentation coverage and strict linting. 
+Our codebase enforces 100% documentation coverage, 100% test coverage, and strict linting.
 
 - **Testing:** Run the comprehensive test suite with `cargo test`.
-- **Linting:** We enforce strict Clippy rules. Run `cargo clippy --all-targets --all-features`.
-- **Pre-commit:** Install pre-commit hooks to ensure code quality before pushing:
+- **Linting:** We enforce strict Clippy rules. Run `cargo clippy --all-targets --all-features -- -D warnings`.
+- **Pre-commit:** Install pre-commit hooks to ensure code quality before committing:
   ```bash
   pre-commit install
   ```
-- **Documentation Coverage:** Ensure all public and internal items are documented. You can check for missing docs using the provided utility:
+- **Documentation Coverage:** Ensure all public and internal items are documented (`#![deny(missing_docs)]` and `#![deny(clippy::missing_docs_in_private_items)]`):
   ```bash
-  python check_docs.py
+  cargo +nightly rustdoc -- -Z unstable-options --show-coverage
   ```
 
 ## Deployment

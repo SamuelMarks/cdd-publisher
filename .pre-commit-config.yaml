@@ -10,7 +10,7 @@ repos:
       - id: cargo-fmt
         name: cargo fmt
         description: Format files with rustfmt.
-        entry: bash -c 'cargo fmt --all -- --check || (cargo fmt --all && exit 1)'
+        entry: bash -c 'cargo +stable fmt --all -- --check || (cargo +stable fmt --all && exit 1)'
         language: system
         types: [rust]
         pass_filenames: false
@@ -18,7 +18,23 @@ repos:
       - id: cargo-check
         name: cargo check
         description: Check the package for errors.
-        entry: cargo check --workspace
+        entry: cargo +stable check --workspace
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint the package with strict Clippy rules.
+        entry: cargo +stable clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-doc
+        name: cargo doc
+        description: Verify documentation builds without warnings or missing docs.
+        entry: cargo +stable doc --no-deps
         language: system
         types: [rust]
         pass_filenames: false
@@ -26,14 +42,14 @@ repos:
       - id: cargo-test
         name: cargo test
         description: Run tests.
-        entry: bash -c 'DATABASE_URL=postgres://postgres:password@localhost/cdd cargo test --workspace'
+        entry: bash -c 'cargo +stable test --workspace'
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: coverage-shields
         name: Update Coverage Shields
-        description: Run tarpaulin and update README.md shields
+        description: Run coverage checks and update README.md shields
         entry: bash -c './scripts/update_shields.sh'
         language: system
         types: [rust]
