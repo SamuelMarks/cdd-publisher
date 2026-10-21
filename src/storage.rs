@@ -1,7 +1,7 @@
 //! Module for fetching and unpacking generated artifacts.
 //!
-//! Provides the [`ArtifactStorage`] trait for dependency injection and
-//! [`HttpArtifactStorage`] for downloading and safely extracting `.zip` and `.tar.gz`/`.tgz`
+//! Provides the `ArtifactStorage` trait for dependency injection and
+//! `HttpArtifactStorage` for downloading and safely extracting `.zip` and `.tar.gz`/`.tgz`
 //! bundles without blocking the async runtime or permitting Zip-Slip path traversal.
 
 use crate::domain::{ArchiveFormat, ArtifactUrl};
@@ -113,7 +113,7 @@ fn unpack_bytes(bytes: &[u8], format: ArchiveFormat, dest_dir: &Path) -> Result<
                 validate_safe_relative_path(entry_path)?;
 
                 let outpath = dest_dir.join(entry_path);
-                if raw_name.ends_with('/') || file.is_dir() {
+                if file.is_dir() {
                     fs::create_dir_all(&outpath)?;
                 } else {
                     fs::create_dir_all(outpath.parent().unwrap_or(dest_dir))?;
@@ -178,11 +178,12 @@ mod tests {
         let client = Client::new();
         let dest = TempDir::new()?;
 
-        let result = fetch_and_unpack(&client, "http://localhost/file.txt", dest.path()).await;
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(e.to_string().contains("Unsupported artifact format"));
-        }
+        let msg = fetch_and_unpack(&client, "http://localhost/file.txt", dest.path())
+            .await
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("Unsupported artifact format"));
         Ok(())
     }
 

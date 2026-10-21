@@ -96,14 +96,9 @@ where
 {
     let http_client = reqwest::Client::new();
     let audit_client = AuditClient::new(http_client, config.control_plane_url);
-
-    let mut worker = Worker::new(
-        connection,
-        config.stream_config,
-        config.tokens,
-        audit_client,
-    )
-    .await?;
+    let stream_cfg = config.stream_config;
+    let tokens = config.tokens;
+    let mut worker = Worker::new(connection, stream_cfg, tokens, audit_client).await?;
 
     while keep_running() {
         worker.run_once().await?;
@@ -274,22 +269,23 @@ mod tests {
         unreachable_cfg.redis_url = "redis://127.0.0.1:1/".to_string();
         assert!(run_with_config(unreachable_cfg, || false).await.is_err());
 
-        // Spawn a lightweight in-process RESP stub responder that replies "+OK\r\n" to every command
+        // Spawn a lightweight in-process RESP stub responder that replies "+OK\r\n" to initialization commands
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
-        tokio::spawn(async move {
-            if let Ok((mut stream, _)) = listener.accept().await {
-                let mut buf = [0u8; 512];
-                while let Ok(n) = stream.read(&mut buf).await
-                    && n > 0
-                    && stream.write_all(b"+OK\r\n+OK\r\n").await.is_ok()
-                {}
+        let server_task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut buf = [0u8; 512];
+            for _ in 0..2 {
+                let _ = stream.read(&mut buf).await?;
+                stream.write_all(b"+OK\r\n+OK\r\n").await?;
             }
+            Ok::<(), std::io::Error>(())
         });
 
         let mut ok_cfg = AppConfig::from_env_fn(|_| None);
         ok_cfg.redis_url = format!("redis://{addr}/");
         run_with_config(ok_cfg, || false).await?;
+        server_task.await??;
 
         // Also exercise the top-level `main()` entrypoint deterministically in its own thread
         // with an invalid scheme so it returns immediately without network waits.

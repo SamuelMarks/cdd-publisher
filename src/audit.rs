@@ -1,7 +1,7 @@
 //! Module for sending audit telemetry back to the control plane.
 //!
-//! Defines [`AuditPayload`], the [`AuditReporter`] trait for dependency injection,
-//! and [`AuditClient`] for HTTP status reporting with URL normalization.
+//! Defines `AuditPayload`, the `AuditReporter` trait for dependency injection,
+//! and `AuditClient` for HTTP status reporting with URL normalization.
 
 use crate::domain::{ArtifactUrl, ControlPlaneUrl, Registry};
 use crate::error::Result;

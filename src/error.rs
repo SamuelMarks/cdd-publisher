@@ -1,6 +1,6 @@
 //! Error types for the `cdd-publisher` application.
 //!
-//! Uses a single comprehensive error enum [`PublisherError`] powered by `derive_more`
+//! Uses a single comprehensive error enum `PublisherError` powered by `derive_more`
 //! (`Display`, `Error`, `From`) across the entire crate.
 
 use crate::domain::Registry;
@@ -124,11 +124,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_from_http() {
+        let mock_server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
         let client = reqwest::Client::new();
-        if let Err(http_err) = client.get("http://::invalid_url").send().await {
-            let err: PublisherError = http_err.into();
-            assert!(err.to_string().starts_with("HTTP error:"));
-            assert!(err.source().is_some());
+        for url in [mock_server.uri(), "http://::invalid_url".to_string()] {
+            if let Err(http_err) = client.get(&url).send().await {
+                let err: PublisherError = http_err.into();
+                assert!(err.to_string().starts_with("HTTP error:"));
+                assert!(err.source().is_some());
+            }
         }
     }
 
@@ -150,12 +158,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_from_join() {
-        let handle = tokio::task::spawn(std::future::pending::<()>());
-        handle.abort();
-        if let Err(join_err) = handle.await {
-            let err: PublisherError = join_err.into();
-            assert!(err.to_string().starts_with("Task join error:"));
-            assert!(err.source().is_some());
+        let ok_handle = tokio::task::spawn(std::future::ready(()));
+        let abort_handle = tokio::task::spawn(std::future::pending::<()>());
+        abort_handle.abort();
+        for handle in [ok_handle, abort_handle] {
+            if let Err(join_err) = handle.await {
+                let err: PublisherError = join_err.into();
+                assert!(err.to_string().starts_with("Task join error:"));
+                assert!(err.source().is_some());
+            }
         }
     }
 

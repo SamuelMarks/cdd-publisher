@@ -22,7 +22,12 @@ zip = { version = "9.0", default-features = false, features = ["deflate-flate2"]
 
 [lints.rust]
 missing_docs = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(coverage)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(coverage)', 'cfg(coverage_nightly)'] }
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+bare_urls = "deny"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }

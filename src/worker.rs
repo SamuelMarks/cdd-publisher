@@ -1,8 +1,8 @@
 //! Worker loop and queue abstraction for `cdd-publisher`.
 //!
-//! Coordinates reading publish jobs from the [`EventQueue`], fetching and unpacking
-//! artifacts via [`ArtifactStorage`], publishing via [`RegistryPublisher`], and
-//! emitting completion telemetry via [`AuditReporter`].
+//! Coordinates reading publish jobs from the `EventQueue`, fetching and unpacking
+//! artifacts via `ArtifactStorage`, publishing via `RegistryPublisher`, and
+//! emitting completion telemetry via `AuditReporter`.
 
 use crate::audit::{AuditClient, AuditPayload, AuditReporter};
 use crate::domain::{
@@ -174,13 +174,10 @@ where
     C: redis::aio::ConnectionLike + Send + Sync,
 {
     async fn create_group(&mut self, stream: &StreamName, group: &GroupName) -> Result<()> {
-        let result: redis::RedisResult<()> = redis::AsyncCommands::xgroup_create_mkstream(
-            self,
-            stream.as_str(),
-            group.as_str(),
-            "$",
-        )
-        .await;
+        let s = stream.as_str();
+        let g = group.as_str();
+        let result: redis::RedisResult<()> =
+            redis::AsyncCommands::xgroup_create_mkstream(self, s, g, "$").await;
         handle_create_group_result(result)
     }
 
@@ -194,17 +191,18 @@ where
             .group(group.as_str(), consumer.as_str())
             .block(5000)
             .count(1);
-
+        let keys = [stream.as_str()];
+        let ids = [">"];
         let reply: redis::streams::StreamReadReply =
-            redis::AsyncCommands::xread_options(self, &[stream.as_str()], &[">"], &opts).await?;
-
+            redis::AsyncCommands::xread_options(self, &keys, &ids, &opts).await?;
         extract_message_from_reply(&reply)
     }
 
     async fn ack(&mut self, stream: &StreamName, group: &GroupName, id: &MessageId) -> Result<()> {
-        let _: () =
-            redis::AsyncCommands::xack(self, stream.as_str(), group.as_str(), &[id.as_str()])
-                .await?;
+        let s = stream.as_str();
+        let g = group.as_str();
+        let ids = [id.as_str()];
+        let (): () = redis::AsyncCommands::xack(self, s, g, &ids).await?;
         Ok(())
     }
 }
@@ -321,22 +319,15 @@ where
     /// Returns [`PublisherError`] if reading from the stream fails or if acknowledging
     /// a processed or malformed message fails.
     pub async fn run_once(&mut self) -> Result<()> {
-        let msg = self
-            .connection
-            .read_one(
-                &self.stream_config.stream_name,
-                &self.stream_config.group_name,
-                &self.stream_config.consumer_name,
-            )
-            .await?;
-
-        let Some(raw_msg) = msg else {
+        let s = &self.stream_config.stream_name;
+        let g = &self.stream_config.group_name;
+        let c = &self.stream_config.consumer_name;
+        let Some(raw_msg) = self.connection.read_one(s, g, c).await? else {
             return Ok(());
         };
 
         if raw_msg.payload.is_empty() {
-            self.acknowledge(&raw_msg.id).await?;
-            return Ok(());
+            return self.acknowledge(&raw_msg.id).await;
         }
 
         match serde_json::from_slice::<PublishJob>(&raw_msg.payload) {
@@ -350,15 +341,14 @@ where
 
                 if let Err(e) = process_result {
                     eprintln!("Failed to process job: {e}");
+                    Ok(())
                 } else {
-                    self.acknowledge(&raw_msg.id).await?;
+                    self.acknowledge(&raw_msg.id).await
                 }
-                Ok(())
             }
             Err(e) => {
                 eprintln!("Failed to parse job payload: {e}");
-                self.acknowledge(&raw_msg.id).await?;
-                Ok(())
+                self.acknowledge(&raw_msg.id).await
             }
         }
     }
@@ -422,13 +412,9 @@ where
     ///
     /// Returns [`PublisherError`] if the `XACK` operation fails.
     async fn acknowledge(&mut self, id: &MessageId) -> Result<()> {
-        self.connection
-            .ack(
-                &self.stream_config.stream_name,
-                &self.stream_config.group_name,
-                id,
-            )
-            .await
+        let s = &self.stream_config.stream_name;
+        let g = &self.stream_config.group_name;
+        self.connection.ack(s, g, id).await
     }
 }
 
@@ -719,11 +705,13 @@ exit {exit_code}
             artifact_id: ArtifactUrl::new("http://localhost/artifact.zip"),
             registry: "unsupported".to_string(),
         };
-        let res = worker.process_job(&unsupported_job).await;
-        assert!(res.is_err());
-        if let Err(err) = res {
-            assert!(err.to_string().contains("Unsupported registry"));
-        }
+        let msg = worker
+            .process_job(&unsupported_job)
+            .await
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("Unsupported registry"));
 
         for reg in ["npm", "pypi", "cargo"] {
             let job = PublishJob {

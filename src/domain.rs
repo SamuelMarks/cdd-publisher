@@ -157,9 +157,8 @@ impl Drop for SecretToken {
         // Overwrite the secret bytes in memory prior to deallocation.
         // SAFETY: Replacing valid UTF-8 bytes with ASCII 0x00 ('\0') preserves valid UTF-8.
         unsafe {
-            for byte in self.0.as_bytes_mut() {
-                std::ptr::write_volatile(byte, 0);
-            }
+            let bytes = self.0.as_bytes_mut();
+            std::ptr::write_bytes(bytes.as_mut_ptr(), 0, bytes.len());
         }
     }
 }
@@ -505,10 +504,10 @@ mod tests {
         assert_eq!(Registry::Cargo.token_env_var(), "CARGO_REGISTRY_TOKEN");
 
         let invalid = Registry::from_str("maven");
-        assert!(matches!(
-            invalid,
-            Err(PublisherError::UnsupportedRegistry { ref registry }) if registry == "maven"
-        ));
+        assert_eq!(
+            invalid.as_ref().map_err(ToString::to_string),
+            Err("Unsupported registry: maven".to_string())
+        );
         Ok(())
     }
 
@@ -571,10 +570,10 @@ mod tests {
         assert_eq!(ArchiveFormat::TarGz.to_string(), "tar.gz");
 
         let unsupported = ArchiveFormat::from_url_or_path("https://example.com/pkg.rar");
-        assert!(matches!(
-            unsupported,
-            Err(PublisherError::UnsupportedArchiveFormat { ref url }) if url == "https://example.com/pkg.rar"
-        ));
+        assert_eq!(
+            unsupported.as_ref().map_err(ToString::to_string),
+            Err("Unsupported artifact format: https://example.com/pkg.rar".to_string())
+        );
         Ok(())
     }
 

@@ -1,7 +1,7 @@
 //! Handlers for publishing artifacts to external registries.
 //!
-//! Provides both the [`RegistryPublisher`] trait for dependency injection and
-//! [`CliRegistryPublisher`] for invoking `npm`, `twine`, and `cargo` in isolated
+//! Provides both the `RegistryPublisher` trait for dependency injection and
+//! `CliRegistryPublisher` for invoking `npm`, `twine`, and `cargo` in isolated
 //! blocking worker threads with strict credential protection.
 
 use crate::domain::{Registry, SecretToken};
@@ -398,14 +398,13 @@ exit 1"#,
         )?;
         let token = SecretToken::new("secret123");
 
-        let result = publish_npm_with_exe(dest.path(), &token, &exe);
-        assert!(result.is_err());
-        if let Err(err) = result {
-            let msg = err.to_string();
-            assert!(msg.contains("npm publish failed"));
-            assert!(msg.contains("***"));
-            assert!(!msg.contains("secret123"));
-        }
+        let msg = publish_npm_with_exe(dest.path(), &token, &exe)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("npm publish failed"));
+        assert!(msg.contains("***"));
+        assert!(!msg.contains("secret123"));
         assert!(!dest.path().join(".npmrc").exists());
         Ok(())
     }
@@ -453,14 +452,13 @@ exit 1
         let exe = create_mock_cli(dest.path(), "mock_twine_fail", body)?;
         let token = SecretToken::new("pypi-secret-999");
 
-        let result = publish_pypi_with_exe(dest.path(), &token, &exe);
-        assert!(result.is_err());
-        if let Err(err) = result {
-            let msg = err.to_string();
-            assert!(msg.contains("twine upload failed"));
-            assert!(msg.contains("***"));
-            assert!(!msg.contains("pypi-secret-999"));
-        }
+        let msg = publish_pypi_with_exe(dest.path(), &token, &exe)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("twine upload failed"));
+        assert!(msg.contains("***"));
+        assert!(!msg.contains("pypi-secret-999"));
         Ok(())
     }
 
@@ -496,14 +494,13 @@ exit 1"#,
         )?;
         let token = SecretToken::new("cargo-secret-777");
 
-        let result = publish_cargo_with_exe(dest.path(), &token, &exe);
-        assert!(result.is_err());
-        if let Err(err) = result {
-            let msg = err.to_string();
-            assert!(msg.contains("cargo publish failed"));
-            assert!(msg.contains("***"));
-            assert!(!msg.contains("cargo-secret-777"));
-        }
+        let msg = publish_cargo_with_exe(dest.path(), &token, &exe)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        assert!(msg.contains("cargo publish failed"));
+        assert!(msg.contains("***"));
+        assert!(!msg.contains("cargo-secret-777"));
         Ok(())
     }
 
