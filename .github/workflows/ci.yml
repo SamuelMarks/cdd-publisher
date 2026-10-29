@@ -98,22 +98,4 @@ jobs:
         with:
           files: target/${{ matrix.target }}/release/cdd-publisher-${{ matrix.target }}*
           name: Release ${{ github.ref_name }}
-
-  update_latest_tag:
-    name: Update Latest Tag
-    needs: release
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          submodules: recursive
-      - name: Update latest tag (Local only, push disabled per policy)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f latest ${{ github.sha }}
+          tag_name: ${{ github.ref_name }}
