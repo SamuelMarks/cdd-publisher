@@ -13,10 +13,13 @@
 While users interact primarily with the [CDD Web UI](../cdd-web-ui)—the central graphical interface for configuring, generating, and reviewing SDKs—`cdd-publisher` operates entirely in the background. When a user triggers a release from the Web UI, the request flows through the control plane to the publisher queue. This architecture ensures that slow, network-dependent registry uploads do not bottleneck the frontend experience or the core generation engine.
 
 ## Features
-- **Asynchronous Execution:** Listens to event queues for publish requests.
-- **Registry Integration:** Orchestrates package manager commands safely and consistently.
-- **Secure Handling:** Receives decrypted secrets in-memory just-in-time to perform registry authentication, redacting tokens in logs and passing credentials via environment variables.
-- **Audit Logging:** Reports the success or failure of release events back to the control plane.
+- **Asynchronous Execution:** Listens to Redis Streams event queues for publish requests.
+- **Universal 13-Registry Publishing:** Orchestrates package releases across `npm`, `PyPI`, `Cargo`, `Maven Central`, `NuGet`, `RubyGems`, `Packagist`, `pkg.go.dev`, `Swift Package Index`, `vcpkg`, `Conan`, `Homebrew`, and `GitHub Releases`.
+- **Monorepo & Polyrepo Topologies:** Supports both `${GITHUB_ORG_NAME}-sdk` monorepos (with validated `<lang>/` subdirectories) and standalone `${GITHUB_ORG_NAME}-sdk-${LANGUAGE}` polyrepos.
+- **Ephemeral PGP / GPG Signing:** Generates detached `.asc` signatures and GPG-signed Git tags inside an isolated `0o700` `GNUPGHOME` directory (`TempGpgHome`).
+- **Multi-Target Documentation Publishing:** Deploys generated SDK docs and OpenAPI specs to the Official CDD Hosted Doc Site (`cdd-storage` + `cdd-docs-ui`), GitHub Pages (`gh-pages`), `ReadTheDocs`, ecosystem doc hosts (`docs.rs`, `pkg.go.dev`, `javadoc.io`, `rubydoc.info`, Swift `DocC`), or custom webhooks.
+- **Secure Handling:** Receives decrypted secrets in-memory (`SecretToken`), redacts tokens in logs/diagnostics, uses `0o600` RAII-guarded credential files, and zeroes secret buffers on `Drop`.
+- **Audit Logging:** Reports the success or failure of release events back to `cdd-control-plane`.
 
 ## Prerequisites
 

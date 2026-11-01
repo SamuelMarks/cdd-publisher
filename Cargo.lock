@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "cdd-publisher"
-version = "0.0.1"
+version = "0.0.5"
 dependencies = [
  "derive_more",
  "flate2",

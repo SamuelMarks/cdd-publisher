@@ -4,13 +4,13 @@
 //! `HttpArtifactStorage` for downloading and safely extracting `.zip` and `.tar.gz`/`.tgz`
 //! bundles without blocking the async runtime or permitting Zip-Slip path traversal.
 
-use crate::domain::{ArchiveFormat, ArtifactUrl};
-use crate::error::{PublisherError, Result};
+use crate::domain::{ArchiveFormat, ArtifactUrl, validate_safe_relative_path};
+use crate::error::Result;
 use reqwest::Client;
 use std::fs;
 use std::future::Future;
 use std::io::Cursor;
-use std::path::{Component, Path};
+use std::path::Path;
 
 /// Abstract interface for fetching and unpacking artifact bundles.
 pub trait ArtifactStorage: Send + Sync {
@@ -21,9 +21,13 @@ pub trait ArtifactStorage: Send + Sync {
     /// * `url` - The strongly-typed [`ArtifactUrl`] pointing to a `.zip`, `.tar.gz`, or `.tgz` archive.
     /// * `dest_dir` - The destination directory where archive entries will be unpacked.
     ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the archive is downloaded and extracted into `dest_dir`.
+    ///
     /// # Errors
     ///
-    /// Returns [`PublisherError`] if the archive format is unsupported, the HTTP download fails,
+    /// Returns [`crate::error::PublisherError`] if the archive format is unsupported, the HTTP download fails,
     /// an archive entry contains a path traversal (`..` / absolute path), or extraction fails.
     fn fetch_and_unpack(
         &self,
@@ -45,6 +49,10 @@ impl HttpArtifactStorage {
     /// # Arguments
     ///
     /// * `client` - The HTTP client to use for downloading artifacts.
+    ///
+    /// # Returns
+    ///
+    /// A new [`HttpArtifactStorage`] instance.
     #[must_use]
     pub const fn new(client: Client) -> Self {
         Self { client }
@@ -57,37 +65,6 @@ impl ArtifactStorage for HttpArtifactStorage {
     }
 }
 
-/// Validates that a relative path inside an archive does not contain parent directory (`..`),
-/// root (`/`), or prefix components (Zip-Slip protection).
-///
-/// # Arguments
-///
-/// * `entry_path` - The relative path of the archive entry.
-///
-/// # Errors
-///
-/// Returns [`PublisherError::UnsafeArchivePath`] if the path is empty or attempts traversal.
-fn validate_safe_relative_path(entry_path: &Path) -> Result<()> {
-    let mut has_normal = false;
-    for component in entry_path.components() {
-        match component {
-            Component::Normal(_) => has_normal = true,
-            Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(PublisherError::UnsafeArchivePath {
-                    entry_path: entry_path.to_string_lossy().into_owned(),
-                });
-            }
-        }
-    }
-    if !has_normal {
-        return Err(PublisherError::UnsafeArchivePath {
-            entry_path: entry_path.to_string_lossy().into_owned(),
-        });
-    }
-    Ok(())
-}
-
 /// Unpacks archive bytes in memory into `dest_dir` according to `format`.
 ///
 /// Runs synchronously and is designed to be invoked inside `tokio::task::spawn_blocking`.
@@ -98,9 +75,13 @@ fn validate_safe_relative_path(entry_path: &Path) -> Result<()> {
 /// * `format` - The detected [`ArchiveFormat`].
 /// * `dest_dir` - Target directory on disk.
 ///
+/// # Returns
+///
+/// `Ok(())` when all archive entries are validated and extracted.
+///
 /// # Errors
 ///
-/// Returns [`PublisherError`] if archive parsing, path validation, or file extraction fails.
+/// Returns [`crate::error::PublisherError`] if archive parsing, path validation, or file extraction fails.
 fn unpack_bytes(bytes: &[u8], format: ArchiveFormat, dest_dir: &Path) -> Result<()> {
     match format {
         ArchiveFormat::Zip => {
@@ -149,6 +130,10 @@ fn unpack_bytes(bytes: &[u8], format: ArchiveFormat, dest_dir: &Path) -> Result<
 /// * `url` - The URL string of the artifact archive.
 /// * `dest_dir` - The destination directory where the archive will be extracted.
 ///
+/// # Returns
+///
+/// `Ok(())` when the archive is fetched and unpacked.
+///
 /// # Errors
 ///
 /// Returns an error if the archive format is unsupported, the HTTP request fails,
@@ -166,6 +151,7 @@ pub async fn fetch_and_unpack(client: &Client, url: &str, dest_dir: &Path) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::PublisherError;
     use std::io::Write;
     use tempfile::TempDir;
     use wiremock::{

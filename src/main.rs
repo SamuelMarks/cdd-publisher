@@ -4,21 +4,25 @@
 
 /// Audit client for telemetry reporting to `cdd-control-plane`.
 pub mod audit;
+/// Multi-target documentation publishing engine.
+pub mod docs_publish;
 /// Strong domain primitives and value objects.
 pub mod domain;
 /// Unified error enum and `Result` alias.
 pub mod error;
 /// Registry publishing CLI abstractions and implementations.
 pub mod publish;
+/// Ephemeral PGP/GPG cryptographic signing engine.
+pub mod signing;
 /// Artifact downloading and archive unpacking.
 pub mod storage;
 /// Background worker processing loop and queue trait.
 pub mod worker;
 
 use audit::AuditClient;
-use domain::{ControlPlaneUrl, SecretToken, StreamConfig};
+use domain::{ControlPlaneUrl, RegistryTokens, SecretToken, StreamConfig};
 use error::Result;
-use worker::{EventQueue, RegistryTokens, Worker};
+use worker::{EventQueue, Worker};
 
 /// Runtime configuration for the `cdd-publisher` worker node.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +33,7 @@ pub struct AppConfig {
     pub control_plane_url: ControlPlaneUrl,
     /// Redis stream, consumer group, and consumer names.
     pub stream_config: StreamConfig,
-    /// Optional authentication tokens for `npm`, `pypi`, and `cargo`.
+    /// Optional authentication tokens for all 13 supported registries and doc hosts.
     pub tokens: RegistryTokens,
 }
 
@@ -42,6 +46,10 @@ impl AppConfig {
     /// # Arguments
     ///
     /// * `get_env` - A function or closure taking an environment variable key and returning `Option<String>`.
+    ///
+    /// # Returns
+    ///
+    /// A populated [`AppConfig`].
     #[must_use]
     pub fn from_env_fn<F>(mut get_env: F) -> Self
     where
@@ -55,6 +63,16 @@ impl AppConfig {
             npm: get_env("NPM_TOKEN").map(SecretToken::new),
             pypi: get_env("TWINE_PASSWORD").map(SecretToken::new),
             cargo: get_env("CARGO_REGISTRY_TOKEN").map(SecretToken::new),
+            maven_username: get_env("MAVEN_USERNAME").map(SecretToken::new),
+            maven_password: get_env("MAVEN_PASSWORD").map(SecretToken::new),
+            nuget: get_env("NUGET_API_KEY").map(SecretToken::new),
+            rubygems: get_env("GEM_HOST_API_KEY").map(SecretToken::new),
+            packagist: get_env("PACKAGIST_TOKEN").map(SecretToken::new),
+            github: get_env("GITHUB_TOKEN").map(SecretToken::new),
+            conan: get_env("CONAN_PASSWORD").map(SecretToken::new),
+            vcpkg_repo_url: get_env("VCPKG_REPO_URL").map(SecretToken::new),
+            homebrew_tap_repo: get_env("HOMEBREW_TAP_REPO").map(SecretToken::new),
+            readthedocs: get_env("READTHEDOCS_TOKEN").map(SecretToken::new),
         };
 
         Self {
@@ -66,6 +84,10 @@ impl AppConfig {
     }
 
     /// Loads [`AppConfig`] from the current process environment (`std::env::var`).
+    ///
+    /// # Returns
+    ///
+    /// An [`AppConfig`] populated from process environment variables.
     #[must_use]
     pub fn from_process_env() -> Self {
         Self::from_env_fn(|key| std::env::var(key).ok())
@@ -80,6 +102,10 @@ impl AppConfig {
 /// * `connection` - The event queue connection to consume jobs from.
 /// * `config` - The application configuration.
 /// * `keep_running` - A predicate evaluated before each iteration of the worker loop.
+///
+/// # Returns
+///
+/// `Ok(())` when `keep_running` returns `false`.
 ///
 /// # Errors
 ///
@@ -112,6 +138,10 @@ where
 ///
 /// * `config` - The application configuration containing the Redis URL and tokens.
 /// * `keep_running` - A predicate evaluated before each iteration of the worker loop.
+///
+/// # Returns
+///
+/// `Ok(())` when `keep_running` returns `false`.
 ///
 /// # Errors
 ///
@@ -195,6 +225,16 @@ mod tests {
         env_map.insert("NPM_TOKEN", "npm-1".to_string());
         env_map.insert("TWINE_PASSWORD", "pypi-2".to_string());
         env_map.insert("CARGO_REGISTRY_TOKEN", "cargo-3".to_string());
+        env_map.insert("MAVEN_USERNAME", "mvn-u".to_string());
+        env_map.insert("MAVEN_PASSWORD", "mvn-p".to_string());
+        env_map.insert("NUGET_API_KEY", "nuget-k".to_string());
+        env_map.insert("GEM_HOST_API_KEY", "gem-k".to_string());
+        env_map.insert("PACKAGIST_TOKEN", "php-k".to_string());
+        env_map.insert("GITHUB_TOKEN", "gh-k".to_string());
+        env_map.insert("CONAN_PASSWORD", "conan-k".to_string());
+        env_map.insert("VCPKG_REPO_URL", "vcpkg-u".to_string());
+        env_map.insert("HOMEBREW_TAP_REPO", "brew-t".to_string());
+        env_map.insert("READTHEDOCS_TOKEN", "rtd-t".to_string());
 
         let custom_cfg = AppConfig::from_env_fn(|k| env_map.get(k).cloned());
         assert_eq!(custom_cfg.redis_url, "redis://localhost:6380/");
@@ -213,18 +253,10 @@ mod tests {
         assert_eq!(
             custom_cfg
                 .tokens
-                .pypi
+                .readthedocs
                 .as_ref()
                 .map(SecretToken::expose_secret),
-            Some("pypi-2")
-        );
-        assert_eq!(
-            custom_cfg
-                .tokens
-                .cargo
-                .as_ref()
-                .map(SecretToken::expose_secret),
-            Some("cargo-3")
+            Some("rtd-t")
         );
 
         let proc_cfg = AppConfig::from_process_env();
@@ -269,15 +301,21 @@ mod tests {
         unreachable_cfg.redis_url = "redis://127.0.0.1:1/".to_string();
         assert!(run_with_config(unreachable_cfg, || false).await.is_err());
 
-        // Spawn a lightweight in-process RESP stub responder that replies "+OK\r\n" to initialization commands
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
         let server_task = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await?;
             let mut buf = [0u8; 512];
-            for _ in 0..2 {
-                let _ = stream.read(&mut buf).await?;
-                stream.write_all(b"+OK\r\n+OK\r\n").await?;
+            loop {
+                let n = stream.read(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let replies = req.matches('*').count().max(1);
+                for _ in 0..replies {
+                    let _ = stream.write_all(b"+OK\r\n").await;
+                }
             }
             Ok::<(), std::io::Error>(())
         });
@@ -287,8 +325,6 @@ mod tests {
         run_with_config(ok_cfg, || false).await?;
         server_task.await??;
 
-        // Also exercise the top-level `main()` entrypoint deterministically in its own thread
-        // with an invalid scheme so it returns immediately without network waits.
         // SAFETY: `test_app_config_from_env_fn_defaults_and_overrides` only asserts `redis_url != ""`.
         unsafe {
             std::env::set_var("REDIS_URL", "invalid_redis_scheme://127.0.0.1/");

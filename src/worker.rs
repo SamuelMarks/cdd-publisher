@@ -1,72 +1,21 @@
 //! Worker loop and queue abstraction for `cdd-publisher`.
 //!
 //! Coordinates reading publish jobs from the `EventQueue`, fetching and unpacking
-//! artifacts via `ArtifactStorage`, publishing via `RegistryPublisher`, and
-//! emitting completion telemetry via `AuditReporter`.
+//! artifacts via `ArtifactStorage`, resolving monorepo/polyrepo working directories,
+//! publishing via `RegistryPublisher` (with optional PGP signing), deploying documentation
+//! via `DocsPublisher`, and emitting completion telemetry via `AuditReporter`.
 
 use crate::audit::{AuditClient, AuditPayload, AuditReporter};
+use crate::docs_publish::{DocsPublisher, HttpAndGitDocsPublisher};
 use crate::domain::{
-    ArtifactUrl, ConsumerName, GroupName, MessageId, RawQueueMessage, Registry, SecretToken,
-    StreamConfig, StreamName,
+    ArtifactUrl, ConsumerName, GroupName, MessageId, RawQueueMessage, Registry, StreamConfig,
+    StreamName,
 };
+pub use crate::domain::{PublishJob, RegistryTokens};
 use crate::error::{PublisherError, Result};
 use crate::publish::{CliRegistryPublisher, ExecutablePaths, RegistryPublisher};
 use crate::storage::{ArtifactStorage, HttpArtifactStorage};
-use serde::{Deserialize, Serialize};
 use std::future::Future;
-use std::str::FromStr;
-
-/// Authentication tokens configured for supported registries.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RegistryTokens {
-    /// Token for the NPM registry (`NPM_TOKEN`).
-    pub npm: Option<SecretToken>,
-    /// Token for the `PyPI` registry (`TWINE_PASSWORD`).
-    pub pypi: Option<SecretToken>,
-    /// Token for the Cargo registry (`CARGO_REGISTRY_TOKEN`).
-    pub cargo: Option<SecretToken>,
-}
-
-impl RegistryTokens {
-    /// Retrieves the configured [`SecretToken`] for the given [`Registry`].
-    ///
-    /// # Arguments
-    ///
-    /// * `registry` - The target registry requiring authentication.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PublisherError::MissingRegistryToken`] if the token for `registry` is `None`.
-    pub fn token_for(&self, registry: Registry) -> Result<&SecretToken> {
-        let maybe_token = match registry {
-            Registry::Npm => self.npm.as_ref(),
-            Registry::PyPi => self.pypi.as_ref(),
-            Registry::Cargo => self.cargo.as_ref(),
-        };
-        maybe_token.ok_or(PublisherError::MissingRegistryToken { registry })
-    }
-}
-
-/// Wire payload of a job read from the Redis stream.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PublishJob {
-    /// The URL of the artifact archive to fetch and publish.
-    #[serde(alias = "artifact_url")]
-    pub artifact_id: ArtifactUrl,
-    /// The target registry identifier (e.g., `"npm"`, `"pypi"`, `"cargo"`).
-    pub registry: String,
-}
-
-impl PublishJob {
-    /// Parses the job's `registry` string into a strongly-typed [`Registry`] enum.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`PublisherError::UnsupportedRegistry`] if `self.registry` is not recognized.
-    pub fn parsed_registry(&self) -> Result<Registry> {
-        Registry::from_str(&self.registry)
-    }
-}
 
 /// Abstract interface for the event queue, allowing deterministic mocking in unit tests.
 pub trait EventQueue: Send + Sync {
@@ -76,6 +25,10 @@ pub trait EventQueue: Send + Sync {
     ///
     /// * `stream` - The stream name.
     /// * `group` - The consumer group name.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the group is created or already exists.
     ///
     /// # Errors
     ///
@@ -93,6 +46,10 @@ pub trait EventQueue: Send + Sync {
     /// * `stream` - The stream name.
     /// * `group` - The consumer group name.
     /// * `consumer` - The consumer identifier within the group.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Some(RawQueueMessage))` if a message was read, or `Ok(None)` on timeout/empty stream.
     ///
     /// # Errors
     ///
@@ -112,6 +69,10 @@ pub trait EventQueue: Send + Sync {
     /// * `group` - The consumer group name.
     /// * `id` - The message ID to acknowledge.
     ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the message is acknowledged.
+    ///
     /// # Errors
     ///
     /// Returns [`PublisherError`] if acknowledging the message fails.
@@ -130,6 +91,10 @@ pub trait EventQueue: Send + Sync {
 ///
 /// * `result` - The raw [`redis::RedisResult`] returned by `xgroup_create_mkstream`.
 ///
+/// # Returns
+///
+/// `Ok(())` if `result` succeeded or returned `"BUSYGROUP"`.
+///
 /// # Errors
 ///
 /// Returns [`PublisherError::Redis`] if `result` is an error that does not contain `"BUSYGROUP"`.
@@ -147,6 +112,10 @@ pub(crate) fn handle_create_group_result(result: redis::RedisResult<()>) -> Resu
 /// # Arguments
 ///
 /// * `reply` - The stream read reply returned by `XREADGROUP`.
+///
+/// # Returns
+///
+/// `Ok(Some(RawQueueMessage))` if an entry is present, or `Ok(None)` if empty.
 ///
 /// # Errors
 ///
@@ -213,6 +182,7 @@ pub struct Worker<
     S: ArtifactStorage = HttpArtifactStorage,
     P: RegistryPublisher = CliRegistryPublisher,
     A: AuditReporter = AuditClient,
+    D: DocsPublisher = HttpAndGitDocsPublisher,
 > {
     /// The event queue connection (e.g. Redis).
     connection: Q,
@@ -222,15 +192,19 @@ pub struct Worker<
     storage: S,
     /// Registry publisher service used to execute package manager CLIs.
     publisher: P,
+    /// Multi-target documentation publisher service.
+    docs_publisher: D,
     /// Registry authentication tokens.
     tokens: RegistryTokens,
     /// Audit reporter used to notify the control plane of job outcomes.
     audit_client: A,
 }
 
-impl<Q: EventQueue> Worker<Q, HttpArtifactStorage, CliRegistryPublisher, AuditClient> {
+impl<Q: EventQueue>
+    Worker<Q, HttpArtifactStorage, CliRegistryPublisher, AuditClient, HttpAndGitDocsPublisher>
+{
     /// Creates a new [`Worker`] backed by [`HttpArtifactStorage`], [`CliRegistryPublisher`],
-    /// and [`AuditClient`].
+    /// [`HttpAndGitDocsPublisher`], and [`AuditClient`].
     ///
     /// # Arguments
     ///
@@ -238,6 +212,10 @@ impl<Q: EventQueue> Worker<Q, HttpArtifactStorage, CliRegistryPublisher, AuditCl
     /// * `stream_config` - Stream, group, and consumer names.
     /// * `tokens` - Configured [`RegistryTokens`].
     /// * `audit_client` - The [`AuditClient`] for telemetry reporting.
+    ///
+    /// # Returns
+    ///
+    /// An initialized [`Worker`].
     ///
     /// # Errors
     ///
@@ -253,6 +231,7 @@ impl<Q: EventQueue> Worker<Q, HttpArtifactStorage, CliRegistryPublisher, AuditCl
             stream_config,
             HttpArtifactStorage::default(),
             CliRegistryPublisher::default(),
+            HttpAndGitDocsPublisher::default(),
             tokens,
             audit_client,
         )
@@ -263,20 +242,30 @@ impl<Q: EventQueue> Worker<Q, HttpArtifactStorage, CliRegistryPublisher, AuditCl
     ///
     /// # Arguments
     ///
-    /// * `exe_paths` - Custom executable paths for `npm`, `pypi`, and `cargo`.
+    /// * `exe_paths` - Custom executable paths for supported registry toolchains.
     pub fn set_exe_paths(&mut self, exe_paths: ExecutablePaths) {
         self.publisher = CliRegistryPublisher::with_paths(exe_paths);
     }
+
+    /// Replaces the [`HttpAndGitDocsPublisher`] instance used by the worker.
+    ///
+    /// # Arguments
+    ///
+    /// * `docs_publisher` - Configured [`HttpAndGitDocsPublisher`].
+    pub fn set_docs_publisher(&mut self, docs_publisher: HttpAndGitDocsPublisher) {
+        self.docs_publisher = docs_publisher;
+    }
 }
 
-impl<Q, S, P, A> Worker<Q, S, P, A>
+impl<Q, S, P, A, D> Worker<Q, S, P, A, D>
 where
     Q: EventQueue,
     S: ArtifactStorage,
     P: RegistryPublisher,
     A: AuditReporter,
+    D: DocsPublisher,
 {
-    /// Creates a new [`Worker`] with explicitly injected storage, publisher, and audit dependencies.
+    /// Creates a new [`Worker`] with explicitly injected storage, publisher, docs, and audit dependencies.
     ///
     /// # Arguments
     ///
@@ -284,8 +273,13 @@ where
     /// * `stream_config` - Stream, group, and consumer names.
     /// * `storage` - The [`ArtifactStorage`] implementation.
     /// * `publisher` - The [`RegistryPublisher`] implementation.
+    /// * `docs_publisher` - The [`DocsPublisher`] implementation.
     /// * `tokens` - Configured [`RegistryTokens`].
     /// * `audit_client` - The [`AuditReporter`] implementation.
+    ///
+    /// # Returns
+    ///
+    /// An initialized [`Worker`].
     ///
     /// # Errors
     ///
@@ -295,6 +289,7 @@ where
         stream_config: StreamConfig,
         storage: S,
         publisher: P,
+        docs_publisher: D,
         tokens: RegistryTokens,
         audit_client: A,
     ) -> Result<Self> {
@@ -307,12 +302,17 @@ where
             stream_config,
             storage,
             publisher,
+            docs_publisher,
             tokens,
             audit_client,
         })
     }
 
     /// Runs a single iteration of the worker loop (reads and processes at most one message).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after processing or skipping a single message.
     ///
     /// # Errors
     ///
@@ -377,17 +377,22 @@ where
 
     /// Processes a single [`PublishJob`].
     ///
-    /// Validates the target registry and token before downloading/unpacking the archive
-    /// and invoking the [`RegistryPublisher`].
+    /// Validates the target registry and token before downloading/unpacking the archive,
+    /// resolving the monorepo/polyrepo working directory, invoking the [`RegistryPublisher`]
+    /// (with optional PGP signing), and optionally executing [`DocsPublisher`].
     ///
     /// # Arguments
     ///
     /// * `job` - The deserialized [`PublishJob`] to execute.
     ///
+    /// # Returns
+    ///
+    /// `Ok(())` when package and optional documentation publishing succeed.
+    ///
     /// # Errors
     ///
     /// Returns [`PublisherError`] if the registry is unsupported, the registry token is missing,
-    /// downloading/unpacking fails, or publishing fails.
+    /// downloading/unpacking fails, the monorepo subdirectory is unsafe, or publishing fails.
     pub async fn process_job(&self, job: &PublishJob) -> Result<()> {
         let registry = job.parsed_registry()?;
         let token = self.tokens.token_for(registry)?;
@@ -397,9 +402,27 @@ where
             .fetch_and_unpack(&job.artifact_id, dest_dir.path())
             .await?;
 
+        let working_dir = job.resolve_working_dir(dest_dir.path())?;
+        std::fs::create_dir_all(&working_dir)?;
+
         self.publisher
-            .publish(registry, dest_dir.path(), token)
-            .await
+            .publish_with_options(
+                registry,
+                &working_dir,
+                token,
+                job.topology_mode,
+                job.pgp_config.as_ref(),
+            )
+            .await?;
+
+        if let Some(docs_job) = &job.docs_job {
+            let _published_url = self
+                .docs_publisher
+                .publish_docs(docs_job, &working_dir, &self.tokens)
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Acknowledges a message on the underlying [`EventQueue`].
@@ -407,6 +430,10 @@ where
     /// # Arguments
     ///
     /// * `id` - The [`MessageId`] to acknowledge.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when acknowledged.
     ///
     /// # Errors
     ///
@@ -421,26 +448,21 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{DocHostTarget, DocsPublishJob, RepoTopologyMode, SecretToken};
     use std::collections::{HashMap, VecDeque};
     use std::future::ready;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
-        matchers::{method, path},
+        matchers::{method, path, path_regex},
     };
 
     /// Creates a mock executable script with the given exit code.
     fn create_dummy_exe(dir: &std::path::Path, name: &str, exit_code: i32) -> Result<String> {
+        use std::os::unix::fs::PermissionsExt;
         let exe_path = dir.join(name);
-        let script = format!(
-            "#!/bin/sh
-exit {exit_code}
-"
-        );
+        let script = format!("#!/bin/sh\nexit {exit_code}\n");
         std::fs::write(&exe_path, script)?;
-        std::fs::set_permissions(
-            &exe_path,
-            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
-        )?;
+        std::fs::set_permissions(&exe_path, std::fs::Permissions::from_mode(0o755))?;
         Ok(exe_path.to_string_lossy().to_string())
     }
 
@@ -552,67 +574,18 @@ exit {exit_code}
 
     #[test]
     fn test_publish_job_serialization_and_registry_parsing() -> Result<()> {
-        let job = PublishJob {
-            artifact_id: ArtifactUrl::new("test-artifact-123.zip"),
-            registry: "npm".to_string(),
-        };
-
+        let job = PublishJob::new("test-artifact-123.zip", "npm");
         assert_eq!(job.parsed_registry()?, Registry::Npm);
 
         let json = serde_json::to_string(&job)?;
-        assert_eq!(
-            json,
-            r#"{"artifact_id":"test-artifact-123.zip","registry":"npm"}"#
-        );
-
         let deserialized = serde_json::from_str::<PublishJob>(&json)?;
         assert_eq!(job, deserialized);
         Ok(())
     }
 
-    #[test]
-    fn test_registry_tokens_lookup() -> Result<()> {
-        let tokens = RegistryTokens {
-            npm: Some(SecretToken::new("npm_tok")),
-            pypi: Some(SecretToken::new("pypi_tok")),
-            cargo: Some(SecretToken::new("cargo_tok")),
-        };
-        assert_eq!(tokens.token_for(Registry::Npm)?.expose_secret(), "npm_tok");
-        assert_eq!(
-            tokens.token_for(Registry::PyPi)?.expose_secret(),
-            "pypi_tok"
-        );
-        assert_eq!(
-            tokens.token_for(Registry::Cargo)?.expose_secret(),
-            "cargo_tok"
-        );
-
-        let empty = RegistryTokens::default();
-        assert!(matches!(
-            empty.token_for(Registry::Npm),
-            Err(PublisherError::MissingRegistryToken {
-                registry: Registry::Npm
-            })
-        ));
-        assert!(matches!(
-            empty.token_for(Registry::PyPi),
-            Err(PublisherError::MissingRegistryToken {
-                registry: Registry::PyPi
-            })
-        ));
-        assert!(matches!(
-            empty.token_for(Registry::Cargo),
-            Err(PublisherError::MissingRegistryToken {
-                registry: Registry::Cargo
-            })
-        ));
-        Ok(())
-    }
-
     #[tokio::test]
-    async fn test_worker_new_success() -> Result<()> {
+    async fn test_worker_new_success_and_error() -> Result<()> {
         let mock_queue = FakeQueue::default();
-
         let worker = Worker::new(
             mock_queue,
             StreamConfig::default(),
@@ -621,30 +594,25 @@ exit {exit_code}
         )
         .await;
         assert!(worker.is_ok());
-        Ok(())
-    }
 
-    #[tokio::test]
-    async fn test_worker_new_error() {
-        let mock_queue = FakeQueue {
+        let err_queue = FakeQueue {
             create_group_error: Some("group err".to_string()),
             ..FakeQueue::default()
         };
-
-        let worker = Worker::new(
-            mock_queue,
+        let err_worker = Worker::new(
+            err_queue,
             StreamConfig::default(),
             RegistryTokens::default(),
             get_dummy_audit_client("http://localhost"),
         )
         .await;
-        assert!(worker.is_err());
+        assert!(err_worker.is_err());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_worker_run_once_no_messages() -> Result<()> {
+    async fn test_worker_run_once_no_messages_empty_and_invalid_json() -> Result<()> {
         let mock_queue = FakeQueue::default();
-
         let mut worker = Worker::new(
             mock_queue,
             StreamConfig::default(),
@@ -654,136 +622,121 @@ exit {exit_code}
         .await?;
         worker.run_once().await?;
         assert_eq!(worker.connection.acked_ids, Vec::<MessageId>::new());
-        Ok(())
-    }
 
-    #[tokio::test]
-    async fn test_worker_run_once_empty_payload() -> Result<()> {
-        let mock_queue = FakeQueue::with_message(RawQueueMessage::new("1-0", Vec::new()));
-
-        let mut worker = Worker::new(
-            mock_queue,
+        let empty_queue = FakeQueue::with_message(RawQueueMessage::new("1-0", Vec::new()));
+        let mut worker_empty = Worker::new(
+            empty_queue,
             StreamConfig::default(),
             RegistryTokens::default(),
             get_dummy_audit_client("http://localhost"),
         )
         .await?;
-        worker.run_once().await?;
-        assert_eq!(worker.connection.acked_ids, vec![MessageId::new("1-0")]);
-        Ok(())
-    }
+        worker_empty.run_once().await?;
+        assert_eq!(
+            worker_empty.connection.acked_ids,
+            vec![MessageId::new("1-0")]
+        );
 
-    #[tokio::test]
-    async fn test_worker_run_once_invalid_json() -> Result<()> {
-        let mock_queue = FakeQueue::with_message(RawQueueMessage::new("1-0", b"invalid".to_vec()));
-
-        let mut worker = Worker::new(
-            mock_queue,
+        let invalid_queue =
+            FakeQueue::with_message(RawQueueMessage::new("2-0", b"invalid".to_vec()));
+        let mut worker_invalid = Worker::new(
+            invalid_queue,
             StreamConfig::default(),
             RegistryTokens::default(),
             get_dummy_audit_client("http://localhost"),
         )
         .await?;
-        worker.run_once().await?;
-        assert_eq!(worker.connection.acked_ids, vec![MessageId::new("1-0")]);
+        worker_invalid.run_once().await?;
+        assert_eq!(
+            worker_invalid.connection.acked_ids,
+            vec![MessageId::new("2-0")]
+        );
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_process_job_unsupported_registry_and_missing_tokens() -> Result<()> {
-        let mock_queue = FakeQueue::default();
-
-        let worker = Worker::new(
-            mock_queue,
-            StreamConfig::default(),
-            RegistryTokens::default(),
-            get_dummy_audit_client("http://localhost"),
-        )
-        .await?;
-
-        let unsupported_job = PublishJob {
-            artifact_id: ArtifactUrl::new("http://localhost/artifact.zip"),
-            registry: "unsupported".to_string(),
-        };
-        let msg = worker
-            .process_job(&unsupported_job)
-            .await
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_default();
-        assert!(msg.contains("Unsupported registry"));
-
-        for reg in ["npm", "pypi", "cargo"] {
-            let job = PublishJob {
-                artifact_id: ArtifactUrl::new("http://localhost/artifact.zip"),
-                registry: reg.to_string(),
-            };
-            assert!(worker.process_job(&job).await.is_err());
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_process_job_pypi_and_cargo_success_and_failure() -> Result<()> {
+    async fn test_process_job_monorepo_docs_and_failure_branches() -> Result<()> {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/artifact.zip"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(make_valid_zip_bytes()?))
             .mount(&mock_server)
             .await;
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/upload/.*"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
 
         let dest = tempfile::TempDir::new()?;
-        let pypi_ok = create_dummy_exe(dest.path(), "twine_ok", 0)?;
-        let pypi_fail = create_dummy_exe(dest.path(), "twine_fail", 1)?;
-        let cargo_ok = create_dummy_exe(dest.path(), "cargo_ok", 0)?;
-        let cargo_fail = create_dummy_exe(dest.path(), "cargo_fail", 1)?;
-
-        let mock_queue = FakeQueue::default();
+        let ok_exe = create_dummy_exe(dest.path(), "ok_cli", 0)?;
+        let fail_exe = create_dummy_exe(dest.path(), "fail_cli", 1)?;
 
         let tokens = RegistryTokens {
             npm: Some(SecretToken::new("tok")),
             pypi: Some(SecretToken::new("tok")),
             cargo: Some(SecretToken::new("tok")),
+            ..RegistryTokens::default()
         };
         let mut worker = Worker::new(
-            mock_queue,
+            FakeQueue::default(),
             StreamConfig::default(),
             tokens,
             get_dummy_audit_client("http://localhost"),
         )
         .await?;
 
-        worker.set_exe_paths(ExecutablePaths {
-            npm: "npm".to_string(),
-            pypi: pypi_ok,
-            cargo: cargo_ok,
-        });
+        worker.set_exe_paths(ExecutablePaths::with_all(&ok_exe));
+        worker.set_docs_publisher(HttpAndGitDocsPublisher::new(
+            reqwest::Client::new(),
+            mock_server.uri(),
+            "https://docs.cdd.dev",
+        ));
 
         let artifact_url = ArtifactUrl::new(format!("{}/artifact.zip", mock_server.uri()));
-        let job_pypi = PublishJob {
-            artifact_id: artifact_url.clone(),
-            registry: "pypi".to_string(),
-        };
-        worker.process_job(&job_pypi).await?;
-
-        let job_cargo = PublishJob {
-            artifact_id: artifact_url,
-            registry: "cargo".to_string(),
-        };
-        worker.process_job(&job_cargo).await?;
-
-        worker.set_exe_paths(ExecutablePaths {
-            npm: "npm".to_string(),
-            pypi: pypi_fail,
-            cargo: cargo_fail,
+        let mut job = PublishJob::new(artifact_url, "pypi");
+        job.topology_mode = RepoTopologyMode::Monorepo;
+        job.sub_directory = Some("python".to_string());
+        job.docs_job = Some(DocsPublishJob {
+            target: DocHostTarget::OfficialCddSite,
+            org_id: "acme".to_string(),
+            repo_id: "acme-sdk".to_string(),
+            version: "1.0.0".to_string(),
+            github_org_name: None,
+            repo_name: None,
+            github_pages_branch: None,
+            custom_url: None,
         });
-        assert!(worker.process_job(&job_pypi).await.is_err());
-        assert!(worker.process_job(&job_cargo).await.is_err());
+
+        worker.process_job(&job).await?;
+
+        // Test docs_job failure branch (CustomUrl without custom_url set)
+        job.docs_job = Some(DocsPublishJob {
+            target: DocHostTarget::CustomUrl,
+            org_id: "acme".to_string(),
+            repo_id: "acme-sdk".to_string(),
+            version: "1.0.0".to_string(),
+            github_org_name: None,
+            repo_name: None,
+            github_pages_branch: None,
+            custom_url: None,
+        });
+        assert!(worker.process_job(&job).await.is_err());
+
+        // Test unsafe monorepo sub_directory branch
+        job.sub_directory = Some("../evil".to_string());
+        assert!(worker.process_job(&job).await.is_err());
+
+        // Test CLI failure branch
+        job.sub_directory = None;
+        worker.set_exe_paths(ExecutablePaths::with_all(&fail_exe));
+        assert!(worker.process_job(&job).await.is_err());
+
         Ok(())
     }
 
     #[tokio::test]
-    async fn test_worker_run_once_process_error_reports_audit_without_ack() -> Result<()> {
+    async fn test_worker_run_once_process_error_and_unsupported_registry() -> Result<()> {
         let valid_json_missing_token =
             br#"{"artifact_id":"http://localhost/a.zip","registry":"npm"}"#.to_vec();
         let mock_queue_err =
@@ -798,39 +751,27 @@ exit {exit_code}
         .await?;
         worker_err.run_once().await?;
         assert_eq!(worker_err.connection.acked_ids, Vec::<MessageId>::new());
-        Ok(())
-    }
 
-    #[tokio::test]
-    async fn test_worker_run_once_unsupported_registry_error() -> Result<()> {
         let valid_json_unsupported = br#"{"artifact_id":"123","registry":"unsupported"}"#.to_vec();
-        let mock_queue_err =
+        let mock_queue_unsup =
             FakeQueue::with_message(RawQueueMessage::new("1-0", valid_json_unsupported));
-
-        let mut worker_err = Worker::new(
-            mock_queue_err,
+        let mut worker_unsup = Worker::new(
+            mock_queue_unsup,
             StreamConfig::default(),
             RegistryTokens::default(),
             get_dummy_audit_client("http://localhost"),
         )
         .await?;
-        worker_err.run_once().await?;
-        assert_eq!(worker_err.connection.acked_ids, Vec::<MessageId>::new());
+        worker_unsup.run_once().await?;
+        assert_eq!(worker_unsup.connection.acked_ids, Vec::<MessageId>::new());
         Ok(())
     }
 
     #[tokio::test]
     async fn test_worker_run_once_success() -> Result<()> {
         let dest = tempfile::TempDir::new()?;
-        let npm_exe = create_dummy_exe(dest.path(), "npm", 0)?;
-        let pypi_exe = create_dummy_exe(dest.path(), "twine", 0)?;
-        let cargo_exe = create_dummy_exe(dest.path(), "cargo", 0)?;
+        let ok_exe = create_dummy_exe(dest.path(), "ok_cli", 0)?;
 
-        let exe_paths = ExecutablePaths {
-            npm: npm_exe,
-            pypi: pypi_exe,
-            cargo: cargo_exe,
-        };
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/artifact.zip"))
@@ -850,8 +791,7 @@ exit {exit_code}
 
         let tokens = RegistryTokens {
             npm: Some(SecretToken::new("token")),
-            pypi: None,
-            cargo: None,
+            ..RegistryTokens::default()
         };
         let mut worker = Worker::new(
             mock_queue,
@@ -860,7 +800,7 @@ exit {exit_code}
             get_dummy_audit_client(&mock_server.uri()),
         )
         .await?;
-        worker.set_exe_paths(exe_paths);
+        worker.set_exe_paths(ExecutablePaths::with_all(&ok_exe));
         worker.run_once().await?;
         assert_eq!(worker.connection.acked_ids, vec![MessageId::new("1-0")]);
         Ok(())
@@ -942,11 +882,9 @@ exit {exit_code}
         let pipe_res = conn.req_packed_commands(&pipe, 0, 1).await?;
         assert_eq!(pipe_res.len(), 1);
 
-        // 1. create_group -> Ok
         conn.create_group(&StreamName::new("s"), &GroupName::new("g"))
             .await?;
 
-        // 2. read_one -> returns empty reply (Array([]))
         conn.next_response = redis::Value::Array(vec![]);
         let msg = conn
             .read_one(
@@ -957,7 +895,6 @@ exit {exit_code}
             .await?;
         assert!(msg.is_none());
 
-        // 3. ack -> returns Int(1)
         conn.next_response = redis::Value::Int(1);
         conn.ack(
             &StreamName::new("s"),

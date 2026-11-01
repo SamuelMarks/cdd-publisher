@@ -1,6 +1,6 @@
 [package]
 name = "cdd-publisher"
-version = "0.0.1"
+version = "0.0.5"
 edition = "2024"
 description = "CDD Publisher"
 license = "MIT OR Apache-2.0"
@@ -36,6 +36,7 @@ nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
+panic = "deny"
 multiple_crate_versions = "allow"
 
 [dev-dependencies]

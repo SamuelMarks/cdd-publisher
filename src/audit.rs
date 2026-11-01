@@ -14,7 +14,7 @@ use std::future::Future;
 pub struct AuditPayload {
     /// The URL/ID of the artifact that was published.
     pub artifact_id: ArtifactUrl,
-    /// The registry that was targeted (`npm`, `pypi`, `cargo`).
+    /// The registry that was targeted.
     pub registry: Registry,
     /// Whether the publishing process was successful.
     pub success: bool,
@@ -30,6 +30,10 @@ impl AuditPayload {
     ///
     /// * `artifact_id` - The artifact URL/ID that succeeded.
     /// * `registry` - The target registry.
+    ///
+    /// # Returns
+    ///
+    /// A successful [`AuditPayload`].
     #[must_use]
     pub const fn success(artifact_id: ArtifactUrl, registry: Registry) -> Self {
         Self {
@@ -47,6 +51,10 @@ impl AuditPayload {
     /// * `artifact_id` - The artifact URL/ID that failed.
     /// * `registry` - The target registry.
     /// * `error_message` - The sanitized error diagnostic string.
+    ///
+    /// # Returns
+    ///
+    /// A failed [`AuditPayload`] containing `error_message`.
     #[must_use]
     pub const fn failure(
         artifact_id: ArtifactUrl,
@@ -69,6 +77,10 @@ pub trait AuditReporter: Send + Sync {
     /// # Arguments
     ///
     /// * `payload` - The [`AuditPayload`] describing the job result.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the audit telemetry event is accepted.
     ///
     /// # Errors
     ///
@@ -94,6 +106,10 @@ impl AuditClient {
     ///
     /// * `client` - The [`reqwest::Client`] instance.
     /// * `control_plane_url` - The base URL of `cdd-control-plane`.
+    ///
+    /// # Returns
+    ///
+    /// A new [`AuditClient`].
     #[must_use]
     pub fn new(client: Client, control_plane_url: impl Into<ControlPlaneUrl>) -> Self {
         Self {
@@ -103,6 +119,10 @@ impl AuditClient {
     }
 
     /// Returns a reference to the configured [`ControlPlaneUrl`].
+    ///
+    /// # Returns
+    ///
+    /// A reference to the underlying [`ControlPlaneUrl`].
     #[must_use]
     pub const fn control_plane_url(&self) -> &ControlPlaneUrl {
         &self.control_plane_url
@@ -113,6 +133,10 @@ impl AuditClient {
     /// # Arguments
     ///
     /// * `payload` - The [`AuditPayload`] containing the job outcome.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the control plane responded with a 2xx status code.
     ///
     /// # Errors
     ///

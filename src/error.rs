@@ -46,12 +46,12 @@ pub enum PublisherError {
         url: String,
     },
 
-    /// An archive entry attempted path traversal outside the extraction root (Zip-Slip).
+    /// An archive entry or subdirectory attempted path traversal outside the root (Zip-Slip).
     #[display("Unsafe archive entry path: {entry_path}")]
     #[error(ignore)]
     #[from(ignore)]
     UnsafeArchivePath {
-        /// The offending relative path inside the archive.
+        /// The offending relative path inside the archive or job configuration.
         entry_path: String,
     },
 
@@ -72,6 +72,29 @@ pub enum PublisherError {
         /// The registry whose authentication token is missing.
         registry: Registry,
     },
+
+    /// A domain value object failed validation.
+    #[display("Invalid {field}: {reason}")]
+    #[error(ignore)]
+    #[from(ignore)]
+    InvalidDomainValue {
+        /// The domain field or type name that failed validation.
+        field: &'static str,
+        /// Human-readable reason for the validation failure.
+        reason: String,
+    },
+
+    /// A PGP/GPG cryptographic signing operation failed.
+    #[display("Signing error: {_0}")]
+    #[error(ignore)]
+    #[from(ignore)]
+    Signing(String),
+
+    /// A documentation publishing operation failed.
+    #[display("Documentation publish error: {_0}")]
+    #[error(ignore)]
+    #[from(ignore)]
+    DocsPublish(String),
 
     /// A registry CLI subprocess exited with a non-zero status or failed validation.
     #[display("Publish error: {_0}")]
@@ -189,11 +212,11 @@ mod tests {
         );
 
         let unsupported_reg = PublisherError::UnsupportedRegistry {
-            registry: "rubygems".to_string(),
+            registry: "unknown_reg".to_string(),
         };
         assert_eq!(
             unsupported_reg.to_string(),
-            "Unsupported registry: rubygems"
+            "Unsupported registry: unknown_reg"
         );
 
         let missing_npm = PublisherError::MissingRegistryToken {
@@ -201,15 +224,23 @@ mod tests {
         };
         assert_eq!(missing_npm.to_string(), "NPM_TOKEN is missing");
 
-        let missing_pypi = PublisherError::MissingRegistryToken {
-            registry: Registry::PyPi,
+        let invalid_val = PublisherError::InvalidDomainValue {
+            field: "PgpKeyFingerprint",
+            reason: "must be hex".to_string(),
         };
-        assert_eq!(missing_pypi.to_string(), "TWINE_PASSWORD is missing");
+        assert_eq!(
+            invalid_val.to_string(),
+            "Invalid PgpKeyFingerprint: must be hex"
+        );
 
-        let missing_cargo = PublisherError::MissingRegistryToken {
-            registry: Registry::Cargo,
-        };
-        assert_eq!(missing_cargo.to_string(), "CARGO_REGISTRY_TOKEN is missing");
+        let sign_err = PublisherError::Signing("gpg failed".to_string());
+        assert_eq!(sign_err.to_string(), "Signing error: gpg failed");
+
+        let docs_err = PublisherError::DocsPublish("upload failed".to_string());
+        assert_eq!(
+            docs_err.to_string(),
+            "Documentation publish error: upload failed"
+        );
 
         let err = PublisherError::Publish("test failure".to_string());
         assert_eq!(err.to_string(), "Publish error: test failure");
